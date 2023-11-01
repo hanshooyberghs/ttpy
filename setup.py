@@ -4,10 +4,10 @@ setup(
     name='ttpy',
     description='package to process VTTL table tennis data',
     version='1.0',
-    package_dir={'': 'ttpy'},  
-    packages=find_packages(where='ttpy'),
+    packages=find_packages(),
     install_requires=['pandas>=2.0','zeep','openpyxl'],
 )
+
 
 
 
