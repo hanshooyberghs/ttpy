@@ -73,7 +73,11 @@ def GetMailClubs(clublist,functies=['secretaris','voorzitter']):
     # get mails
     mails_clubs=clubs[clubs.index.isin(clublist)][columns_to_retrieve].fillna('hans.hooyberghs@gmail.com')
     lijst_clubs=','.join(mails_clubs.values.flatten())    
-    return lijst_clubs
+    
+    # get unique values
+    unique_emails = ','.join(set(email.strip() for email in lijst_clubs.split(',') if email.strip()))
+
+    return unique_emails
 
 
 
@@ -98,6 +102,8 @@ def GetMailinglijst_Lidnummer(invoer,column_lidnummer='Lidnummer',functies=['sec
     sel1=noissues[noissues['Email'].notnull()]['Email']
     sel2=noissues[noissues['Email (CC)'].notnull()]['Email (CC)']
     lijst=','.join(sel1.astype(str))+','+(','.join(sel2.astype(str)))
+    unique_emails = ','.join(set(email.strip() for email in lijst.split(',') if email.strip()))
+
     
     # lijst van clubadressen
     clublijst=noissues['Club (0)'].unique()
@@ -106,7 +112,8 @@ def GetMailinglijst_Lidnummer(invoer,column_lidnummer='Lidnummer',functies=['sec
     # vewerken
     print('Geen mailadres\n',noissues[noissues['Email'].isnull()][['Club (0)','Naam','Voornaam']])
     print('\n')
-    print(lijst+','+lijst_clubs)
+    
+    print(unique_emails+','+lijst_clubs)
 
 
 def getExport():
