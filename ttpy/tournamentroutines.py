@@ -107,7 +107,7 @@ def PrintTotals(final,all_registrations,uitvoer_detail_totaal,column_supplement=
     SaveExcel(df,uitvoer_detail_totaal,'Saldo')
 
 
-def TournamentsSaveAndMail(final,clubs_direct,default_items,uitvoer_detail_club,uitvoer_detail_individueel,lege_factuur,tornooien,column_supplement='Supplement',column_reason_supplement='Reden Supplement'):
+def TournamentsSaveAndMail(final,clubs_direct,default_items,uitvoer_detail_club,uitvoer_detail_individueel,lege_factuur,tornooien,startnummer_factuur=0,formaat_factuur='A-2023/',column_supplement='Supplement',column_reason_supplement='Reden Supplement'):
     ## Make MailingLists and save data
     # input:
     #   final: final dataframe from load routines
@@ -167,6 +167,10 @@ def TournamentsSaveAndMail(final,clubs_direct,default_items,uitvoer_detail_club,
             replace['CLUBNUMMER']=clubnummer
             replace['LIJST']=', '.join(tornooien)
             replace['TOTAAL']=str(totaal)
+            
+            factuurnummer=formaat_factuur+str(startnummer_factuur+cnt).zfill(3)
+            replace['FACTUURNUMMER']=factuurnummer
+
             
             # make string replacements
             doc=Replace(replace,doc)
