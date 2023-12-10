@@ -169,7 +169,7 @@ def TournamentsSaveAndMail(final,clubs_direct,default_items,uitvoer_detail_club,
             replace['TOTAAL']=str(totaal)
             
             factuurnummer=formaat_factuur+str(startnummer_factuur+cnt).zfill(3)
-            replace['FACTUURNUMMER']=factuurnummer
+            replace['NUMMER']=factuurnummer
 
             
             # make string replacements
@@ -181,3 +181,5 @@ def TournamentsSaveAndMail(final,clubs_direct,default_items,uitvoer_detail_club,
 
             
             doc.save(os.path.dirname(uitvoer_detail_club)+'/'+clubnummer+'.docx')
+            
+            cnt=cnt+1

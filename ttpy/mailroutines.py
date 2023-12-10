@@ -124,12 +124,29 @@ def getExport():
     else:
         export_tt = str(input(f"Environmental variable linking to database not set. Please enter the location manually."))
 
-
-
     export=pd.read_csv(export_tt,sep=';',encoding='unicode_escape')
     export['naam_combi']=(export['Naam']+ ' '+export['Voornaam']).str.lower().str.strip() 
+
+    # get club information
     clubs=GetClubs(export)
-    
+
+    # add names of clubs
+    clubdata = {
+    'Club (0)': ["A003", "A008", "A062", "A074", "A075", "A095", "A097", "A105", "A115", "A117", "A118", "A123", 
+                 "A127", "A129", "A130", "A135", "A136", "A138", "A139", "A141", "A142", "A147", "A155", "A159", 
+                 "A160", "A167", "A176", "A182", "A186", "A201", "A211", "A212", "A218", "A222"],
+    'NaamClub': ["KTTC Salamander Mechelen", "TTC Brasgata", "KTTC  A.F.P. Antwerpen", "KTTC Sporting Hove", 
+                 "TTC Rupel", "TTK Turnhout", "KTTC Nijlen-Bevel", "TTK Dessel", "TTK Buhlmann Berlaar", "Geelse TTC", 
+                 "TTK Rijkevorsel", "TTC Virtus", "TTC Retie", "Borsbeek TTK", "TTK Schoten", "TTK Minderhout", 
+                 "TTC Zoersel", "TTC Blue Rackets", "KTTC Hallaar", "TTK Merksplas", "TTC Tecemo", "TTK Gierle", 
+                 "TTC Wommelgem", "TTK Real", "TTC Walem", "TTC Lille \"Boemerangske\"", "TTC Sokah Hoboken", 
+                 "TTC Nodo", "TTC Willebroek", "TTC Hulshout", "KTTK Zwijndrecht", "TTC Sint Antonius", "TTV Poppel", 
+                 "Omni Vrembo"]
+    }
+    clubdata=pd.DataFrame(clubdata)
+    export=export.merge(clubdata,on='Club (0)')   
+    clubs=clubs.merge(clubdata,left_index=True,right_on='Club (0)')
+    clubs.index=clubs['Club (0)']
     return export,clubs
 
 
