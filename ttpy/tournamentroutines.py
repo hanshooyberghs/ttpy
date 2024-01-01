@@ -44,7 +44,21 @@ def GetTournamentEntries(tornooien,inschrijvingsgeld,provincie='A'):
                 nummers['Naam']=[w['Member']['LastName'] for w in serie['RegistrationEntries']]
                 nummers['Voornaam']=[w['Member']['FirstName'] for w in serie['RegistrationEntries']]
                 nummers['Club']=[w['Club']['UniqueIndex'] for w in serie['RegistrationEntries']]
-                nummers['Inschrijvingsgeld']=inschrijvingsgeld
+                
+                # aanpassing voor dubbels: als 'dubbel gemengd' in reeks, dan 'Dubbel Gemengd' toevoegen aan tornooi
+                if 'dubbel gemengd' in serie['Name'].lower():
+                    nummers['Tornooi']=nummers['Tornooi']+' Dubbel Gemengd' 
+                
+                # anders: als nog dubbel: 'Dubbel' toevoegen aan tornooi
+                elif 'dubbel' in serie['Name'].lower():
+                    nummers['Tornooi']=nummers['Tornooi']+' Dubbel'
+
+                # inschrijvingsgeld per tornooi
+                if isinstance(inschrijvingsgeld, int):
+                    nummers['Inschrijvingsgeld']=inschrijvingsgeld
+                else:
+                    nummers['Inschrijvingsgeld']=inschrijvingsgeld[nummers['Tornooi']]
+
                 dfs.append(nummers)
 
 
@@ -52,7 +66,6 @@ def GetTournamentEntries(tornooien,inschrijvingsgeld,provincie='A'):
     all_registrations=pd.concat(dfs)
 
     # only one participation in the same tournament
-    print('Nog aanpassen voor dubbels: wel tweemaal in zelfde tornooi, tornooi anders noemen')
     all_registrations=all_registrations.drop_duplicates(['Lidnummer','Naam','Voornaam','Club','Tornooi'])
 
     # select province
