@@ -197,7 +197,7 @@ def TournamentsSaveAndMail(final,clubs_direct,default_items,uitvoer_detail_club,
             
             cnt=cnt+1
 
-def Inschrijving(lidnummer,tornooi,reeks=None,mail=True,dubbel=False):
+def Inschrijving(lidnummer,tornooi,reeks=None,mail=True,dubbel=False,unregister=False,check=False):
     # Inschrijven voor tornooi
     # input:
     #   lidnummer: lidnummer (of lijst van lidnummers bij dubbel)
@@ -206,6 +206,14 @@ def Inschrijving(lidnummer,tornooi,reeks=None,mail=True,dubbel=False):
     #   mail: send mail or not
     #   dubbel: gaat het om een dubbel of niet
     ###################
+
+    # laad leden
+    export,clubs=mailroutines.getExport()
+    if isinstance(lidnummer, int):
+        persoon=str(export[export['Lidnummer']==lidnummer]['Naam'].iloc[0])
+    else:
+        persoon=','.join(list(export[export['Lidnummer'].isin(lidnummer)]['Naam']))
+
     
     # client aanmaken
     wsdl='http://api.vttl.be/0.7/?wsdl'
@@ -235,6 +243,7 @@ def Inschrijving(lidnummer,tornooi,reeks=None,mail=True,dubbel=False):
     # check whether index_tornooi exists
     if 'index_tornooi' not in locals():
         print('Tornooi of reeks niet gevonden, controleer input')
+        print(tornooi,reeks)
         import sys
         sys.exit()
 
@@ -243,18 +252,20 @@ def Inschrijving(lidnummer,tornooi,reeks=None,mail=True,dubbel=False):
         if dubbel:
             # check whether lidnummer is array
             if isinstance(lidnummer, list):
-                response=client.service.TournamentRegister(TournamentUniqueIndex=index_tornooi,SerieUniqueIndex=index_reeks,PlayerUniqueIndex=lidnummer,Credentials={'Account':account,'Password':paswoord},NotifyPlayer=mail)
+                if not check:
+                    response=client.service.TournamentRegister(TournamentUniqueIndex=index_tornooi,SerieUniqueIndex=index_reeks,PlayerUniqueIndex=lidnummer,Credentials={'Account':account,'Password':paswoord},NotifyPlayer=mail,Unregister=unregister)
             else:
                 raise ValueError(f"Inschrijving dubbel: lidnummer is geen lijst")
 
         else:
             # check whether lidnummer is integer 
             if isinstance(lidnummer, int):
-                response=client.service.TournamentRegister(TournamentUniqueIndex=index_tornooi,SerieUniqueIndex=index_reeks,PlayerUniqueIndex=str(lidnummer),Credentials={'Account':account,'Password':paswoord},NotifyPlayer=mail)
+                if not check:
+                    response=client.service.TournamentRegister(TournamentUniqueIndex=index_tornooi,SerieUniqueIndex=index_reeks,PlayerUniqueIndex=str(lidnummer),Credentials={'Account':account,'Password':paswoord},NotifyPlayer=mail,Unregister=unregister)
             else:
                 raise ValueError(f"Inschrijving enkel: lijsten van lidnummers gegeven")
 
-        print('Inschrijving voor ',lidnummer,' in ',tornooi,' in reeks ',reeks,' is gelukt.')
+        print('Inschrijving voor ',persoon,' (',lidnummer,') in ',tornooi,' in reeks ',reeks,' is gelukt.')
     except ValueError as ve:
         print(f"Caught an error: {ve}")               
     except zeep.exceptions.Fault as fault:
