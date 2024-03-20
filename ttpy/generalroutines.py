@@ -56,6 +56,33 @@ def AddTable(target_string,df,doc):
             cell.width = Inches(2)
     return doc
 
+def SaveExcel(df, filename, sheetname):
+    import pandas as pd
+
+    # Create a Pandas Excel writer using XlsxWriter as the engine.
+    writer = pd.ExcelWriter(filename, engine='xlsxwriter')
+
+    # Convert the dataframe to an XlsxWriter Excel object.
+    df.to_excel(writer, sheet_name=sheetname, index=False, na_rep='')
+
+    # Get the xlsxwriter workbook and worksheet objects.
+    workbook  = writer.book
+    worksheet = writer.sheets[sheetname]
+
+    # Add a format to wrap text.
+    wrap_format = workbook.add_format({'text_wrap': True})
+
+    for column in df:
+        column_length = max(df[column].astype(str).map(len).max(), len(column))*1.02
+        column_length = min(column_length, 150)
+        col_idx = df.columns.get_loc(column)
+
+        # Apply the format to the column.
+        worksheet.set_column(col_idx, col_idx, column_length, wrap_format)
+
+    # Close the Pandas Excel writer and output the Excel file.
+    writer.close()
+"""
 ## Save in Excel
 def SaveExcel(df,filename,sheetname):
     import pandas as pd
@@ -63,11 +90,13 @@ def SaveExcel(df,filename,sheetname):
     df.to_excel(writer, sheet_name=sheetname, index=False, na_rep='')
     for column in df:
         column_length = max(df[column].astype(str).map(len).max(), len(column))*1.02
+        # add total length of the column
+        column_length = max(column_length, 100)
         col_idx = df.columns.get_loc(column)
         writer.sheets[sheetname].set_column(col_idx, col_idx, column_length)
 
     writer.close()
-
+"""
     
 
     

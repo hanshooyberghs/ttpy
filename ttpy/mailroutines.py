@@ -2,6 +2,27 @@
 import pandas as pd
 pd.options.mode.chained_assignment = None
 
+def GetLidnummer(invoer,column_naam='Naam'):
+    # krijg lidnummer gebaseerd op naam en voornaam
+    # input: 
+    #   invoer: gpd met naam en voornaam
+    #   column_naam: kolom met naam in
+
+    # get export
+    export,clubs=getExport()
+    export['naam_combi']=(export['Naam']+' '+export['Voornaam']).str.lower().str.strip()
+
+    # lower
+    invoer['naam_combi']=invoer[column_naam].str.lower().str.strip()
+
+    # combineer voor personen
+    res=pd.merge(invoer,export[['naam_combi','Lidnummer','Club (0)']],how='left',left_on='naam_combi',right_on='naam_combi')
+    print('Issues: ',res[res['Lidnummer'].isnull()])
+    noissues=res[res['Lidnummer'].notnull()]
+
+    # return 
+    return noissues[[column_naam,'Lidnummer','Club (0)']]
+
 
 def GetMailinglijst_Naam(invoer,column_naam='Naam',functies=['Secretaris','Voorzitter']):
     # krijg mailinglijst gebaseerd op naam en voornaam

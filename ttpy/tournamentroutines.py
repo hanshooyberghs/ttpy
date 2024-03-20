@@ -36,30 +36,35 @@ def GetTournamentEntries(tornooien,inschrijvingsgeld,provincie='A'):
             spelers=spelers_tornooi['TournamentEntries'][0]['SerieEntries']
             
             # loop over all series
-            for serie in spelers:       
-                nummers=[w['Member']['UniqueIndex'] for w in serie['RegistrationEntries']]
-                nummers=pd.DataFrame(nummers,columns=['Lidnummer'])
-                nummers['Tornooi']=item['Name'] 
-                nummers['reeks']=item['Name']+' '+serie['Name']
-                nummers['Naam']=[w['Member']['LastName'] for w in serie['RegistrationEntries']]
-                nummers['Voornaam']=[w['Member']['FirstName'] for w in serie['RegistrationEntries']]
-                nummers['Club']=[w['Club']['UniqueIndex'] for w in serie['RegistrationEntries']]
-                
-                # aanpassing voor dubbels: als 'dubbel gemengd' in reeks, dan 'Dubbel Gemengd' toevoegen aan tornooi
-                if 'dubbel gemengd' in serie['Name'].lower():
-                    nummers['Tornooi']=nummers['Tornooi']+' Dubbel Gemengd' 
-                
-                # anders: als nog dubbel: 'Dubbel' toevoegen aan tornooi
-                elif 'dubbel' in serie['Name'].lower():
-                    nummers['Tornooi']=nummers['Tornooi']+' Dubbel'
+            for serie in spelers:   
+                # gratis in A-reeks dames en heren
+                if not ((serie['Name']== 'Dames A')or(serie['Name']=='Heren A')):
+                    # methode werkt momenteel niet voor dubbels
+                    if not ('dubbel' in serie['Name'].lower()):
+                            
+                        nummers=[w['Member']['UniqueIndex'] for w in serie['RegistrationEntries']]
+                        nummers=pd.DataFrame(nummers,columns=['Lidnummer'])
+                        nummers['Tornooi']=item['Name'] 
+                        nummers['reeks']=item['Name']+' '+serie['Name']
+                        nummers['Naam']=[w['Member']['LastName'] for w in serie['RegistrationEntries']]
+                        nummers['Voornaam']=[w['Member']['FirstName'] for w in serie['RegistrationEntries']]
+                        nummers['Club']=[w['Club']['UniqueIndex'] for w in serie['RegistrationEntries']]
+                        
+                        # aanpassing voor dubbels: als 'dubbel gemengd' in reeks, dan 'Dubbel Gemengd' toevoegen aan tornooi
+                        if 'dubbel gemengd' in serie['Name'].lower():
+                            nummers['Tornooi']=nummers['Tornooi']+' Dubbel Gemengd' 
+                        
+                        # anders: als nog dubbel: 'Dubbel' toevoegen aan tornooi
+                        elif 'dubbel' in serie['Name'].lower():
+                            nummers['Tornooi']=nummers['Tornooi']+' Dubbel'
 
-                # inschrijvingsgeld per tornooi
-                if isinstance(inschrijvingsgeld, int):
-                    nummers['Inschrijvingsgeld']=inschrijvingsgeld
-                else:
-                    nummers['Inschrijvingsgeld']=inschrijvingsgeld[nummers['Tornooi']]
+                        # inschrijvingsgeld per tornooi
+                        if isinstance(inschrijvingsgeld, int):
+                            nummers['Inschrijvingsgeld']=inschrijvingsgeld
+                        else:
+                            nummers['Inschrijvingsgeld']=inschrijvingsgeld[item['Name']]
 
-                dfs.append(nummers)
+                        dfs.append(nummers)
 
 
     #combine all
@@ -71,10 +76,30 @@ def GetTournamentEntries(tornooien,inschrijvingsgeld,provincie='A'):
     # select province
     all_registrations=all_registrations[[w[0]=='A' for w in all_registrations.Club]]
 
+    # add dubbels
+    tmp=pd.read_excel('DubbelsVerwerkt.xlsx').drop(columns='ReeksKort')
+    all_registrations=pd.concat([all_registrations,tmp])
+
+    # all Name and Voornaam to capital letter for first letter of each word
+    all_registrations['Naam'] = all_registrations['Naam'].str.title()
+    all_registrations['Voornaam'] = all_registrations['Voornaam'].str.title()
+
+
+    # remove leading and trailing spaces
+    all_registrations['Naam']=all_registrations['Naam'].str.strip()
+    all_registrations['Voornaam']=all_registrations['Voornaam'].str.strip()
+
     # convert to simple list
     combi_amount=all_registrations.groupby(['Lidnummer','Naam','Voornaam','Club'])[['Inschrijvingsgeld']].sum()
     combi_list_tournaments=all_registrations.groupby(['Lidnummer','Naam','Voornaam','Club'])['Tornooi'].apply(list).apply(lambda p:','.join(p))
     final=combi_amount.merge(combi_list_tournaments,left_index=True,right_index=True).reset_index()
+
+    # check on duplicated lidnummer
+    if final['Lidnummer'].duplicated().sum()>0:
+        print('Duplicated lidnummer')
+        print(final[final['Lidnummer'].duplicated()])
+        import sys
+        sys.exit()
     
     return final,all_registrations
 
