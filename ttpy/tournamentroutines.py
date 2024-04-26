@@ -145,7 +145,7 @@ def PrintTotals(final,all_registrations,uitvoer_detail_totaal,column_supplement=
     SaveExcel(df,uitvoer_detail_totaal,'Saldo')
 
 
-def TournamentsSaveAndMail(final,clubs_direct,default_items,uitvoer_detail_club,uitvoer_detail_individueel,lege_factuur,tornooien,startnummer_factuur=0,formaat_factuur='A-2023/',column_supplement='Supplement',column_reason_supplement='Reden Supplement'):
+def TournamentsSaveAndMail(final,clubs_direct,default_items,uitvoer_detail_club,uitvoer_detail_individueel,lege_factuur,tornooien,startnummer_factuur=0,formaat_factuur='A-2023/',column_supplement='Supplement',column_reason_supplement='Reden Supplement',functies=['secretaris','voorzitter','penningmeester']):
     ## Make MailingLists and save data
     # input:
     #   final: final dataframe from load routines
@@ -162,7 +162,7 @@ def TournamentsSaveAndMail(final,clubs_direct,default_items,uitvoer_detail_club,
     selectie_betalen=final[~final.Club.isin(clubs_direct)]
 
     # mailadressen
-    mailroutines.GetMailinglijst_Lidnummer(selectie_betalen[['Lidnummer']],functies=['secretaris','voorzitter','penningmeester'])
+    mailroutines.GetMailinglijst_Lidnummer(selectie_betalen[['Lidnummer']],functies=functies)
 
     # opslaan lijst in Excel
     df=selectie_betalen.sort_values('Naam')[['Lidnummer', 'Naam','Voornaam','Club', 'Totaal','Inschrijvingsgeld', column_supplement,
@@ -175,7 +175,7 @@ def TournamentsSaveAndMail(final,clubs_direct,default_items,uitvoer_detail_club,
     selectie_betalen_club=final[final.Club.isin(clubs_direct)]
 
     # mailadressen
-    mailclubs=mailroutines.GetMailClubs(clubs_direct,functies=['secretaris','voorzitter','penningmeester'])
+    mailclubs=mailroutines.GetMailClubs(selectie_betalen_club.Club.unique(),functies=['secretaris','voorzitter','penningmeester'])
     print(mailclubs)
     
     # opslaan in lijst met excel
