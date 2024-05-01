@@ -145,7 +145,9 @@ def PrintTotals(final,all_registrations,uitvoer_detail_totaal,column_supplement=
     SaveExcel(df,uitvoer_detail_totaal,'Saldo')
 
 
-def TournamentsSaveAndMail(final,clubs_direct,default_items,uitvoer_detail_club,uitvoer_detail_individueel,lege_factuur,tornooien,startnummer_factuur=0,formaat_factuur='A-2023/',column_supplement='Supplement',column_reason_supplement='Reden Supplement',functies=['secretaris','voorzitter','penningmeester']):
+
+
+def TournamentsSaveAndMail(final,clubs_direct,default_items,uitvoer_detail_club,uitvoer_detail_individueel,lege_factuur,tornooien,startnummer_factuur=0,formaat_factuur='A-2023/',column_supplement='Supplement',column_reason_supplement='Reden Supplement',functies=['secretaris','voorzitter','penningmeester'],send_mails=False,mail_test=True):
     ## Make MailingLists and save data
     # input:
     #   final: final dataframe from load routines
@@ -162,12 +164,31 @@ def TournamentsSaveAndMail(final,clubs_direct,default_items,uitvoer_detail_club,
     selectie_betalen=final[~final.Club.isin(clubs_direct)]
 
     # mailadressen
-    mailroutines.GetMailinglijst_Lidnummer(selectie_betalen[['Lidnummer']],functies=functies)
+    mailadressen=mailroutines.GetMailinglijst_Lidnummer(selectie_betalen[['Lidnummer']],functies=functies)
 
     # opslaan lijst in Excel
     df=selectie_betalen.sort_values('Naam')[['Lidnummer', 'Naam','Voornaam','Club', 'Totaal','Inschrijvingsgeld', column_supplement,
           'Tornooi',column_reason_supplement]].rename(columns={'Totaal':'Totaal (euro)'})
-    SaveExcel(df,uitvoer_detail_individueel,'Saldo')
+    
+    
+    start_mail_send=df.merge(mailadressen)
+    SaveExcel(start_mail_send,uitvoer_detail_individueel,'Saldo')
+
+    
+
+    
+    # vervang een aantal trefwoorden in mail_in
+    mail_in=default_items['Mailindividueel']
+    start_mail_send.rename(columns={'Email':'receiver'},inplace=True)
+    start_mail_send['subject']='Inschrijvingsgeld tornooien tafeltennis '+start_mail_send['Voornaam']+' '+start_mail_send['Naam']
+    start_mail_send[column_reason_supplement] = start_mail_send[column_reason_supplement].apply(lambda x: f'({x})' if pd.notnull(x) else '')
+    start_mail_send[column_supplement] = start_mail_send[column_supplement].fillna(0)
+    start_mail_send['message']=start_mail_send.apply(lambda row: mail_in.replace('TOTAAL',str(row['Totaal (euro)'])).replace('INSCHRIJVINGSGELDEN',str(row['Inschrijvingsgeld'])).replace('TORNOOIEN',row['Tornooi']).replace('BOETES',str(row[column_supplement])).replace('REDENBOETE',row[column_reason_supplement]).replace('SPELER',row['Voornaam']+' '+row[ 'Naam']),axis=1)
+
+    # stuur mails uit
+    if send_mails:
+
+        mailroutines.send_emails(start_mail_send.iloc[0:2],smtp_server='mail.tafeltennisantwerpen.be',smtp_port=587,test_mode=mail_test)
 
     # verwerking clubs die rechtsteeks betalen
     #############################################
@@ -175,7 +196,7 @@ def TournamentsSaveAndMail(final,clubs_direct,default_items,uitvoer_detail_club,
     selectie_betalen_club=final[final.Club.isin(clubs_direct)]
 
     # mailadressen
-    mailclubs=mailroutines.GetMailClubs(selectie_betalen_club.Club.unique(),functies=['secretaris','voorzitter','penningmeester'])
+    mailclubs,club_details=mailroutines.GetMailClubs(selectie_betalen_club.Club.unique(),functies=['secretaris','voorzitter','penningmeester'])
     print(mailclubs)
     
     # opslaan in lijst met excel
@@ -221,6 +242,17 @@ def TournamentsSaveAndMail(final,clubs_direct,default_items,uitvoer_detail_club,
             doc.save(os.path.dirname(uitvoer_detail_club)+'/'+clubnummer+'.docx')
             
             cnt=cnt+1
+
+            # save table
+            SaveExcel(sel[['Naam','Voornaam','Totaal','Inschrijvingsgeld',column_supplement,column_reason_supplement,'Tornooi']],os.path.dirname(uitvoer_detail_club)+'/'+clubnummer+'.xlsx','Saldo')
+    
+    # send emails
+    if send_mails:
+        club_details['subject']='Inschrijvingsgeld tornooien tafeltennis '+club_details.index
+        club_details['message']=default_items['MailClubs']
+        club_details['receiver']=club_details['Email']
+        club_details['attachment']=os.path.dirname(uitvoer_detail_club)+'/'+club_details.index+'.xlsx,'+os.path.dirname(uitvoer_detail_club)+'/'+club_details.index+'.docx'
+        mailroutines.send_emails(club_details,smtp_server='mail.tafeltennisantwerpen.be',smtp_port=587,test_mode=mail_test)
 
 def Inschrijving(lidnummer,tornooi,reeks=None,mail=True,dubbel=False,unregister=False,check=False):
     # Inschrijven voor tornooi

@@ -94,11 +94,15 @@ def GetMailClubs(clublist,functies=['secretaris','voorzitter']):
     # get mails
     mails_clubs=clubs[clubs.index.isin(clublist)][columns_to_retrieve].fillna('hans.hooyberghs@gmail.com')
     lijst_clubs=','.join(mails_clubs.values.flatten())    
+
+    # get mailadress per club
+    mails_clubs['Email']=mails_clubs.apply(lambda x: ','.join(x),axis=1)
+    mails_clubs['Email']=mails_clubs['Email'].apply(lambda x: x.rstrip(','))
     
     # get unique values
     unique_emails = ','.join(set(email.strip() for email in lijst_clubs.split(',') if email.strip()))
 
-    return unique_emails
+    return unique_emails,mails_clubs[['Email']]
 
 
 
@@ -114,8 +118,6 @@ def GetMailinglijst_Lidnummer(invoer,column_lidnummer='Lidnummer',functies=['sec
     # get export
     export,clubs=getExport()
     
-
-    
     # combineer voor personen
     res=pd.merge(invoer,export[['Lidnummer','Email', 'Email (CC)','Club (0)','Naam','Voornaam']],how='left',left_on=column_lidnummer,right_on='Lidnummer')
     print('Issues: ',res[res['Club (0)'].isnull()])
@@ -125,16 +127,29 @@ def GetMailinglijst_Lidnummer(invoer,column_lidnummer='Lidnummer',functies=['sec
     lijst=','.join(sel1.astype(str))+','+(','.join(sel2.astype(str)))
     unique_emails = ','.join(set(email.strip() for email in lijst.split(',') if email.strip()))
 
+    # for no issues: sum Email +','+ Email (CC), but remove trailing comma
+    noissues['Email']=noissues['Email'].fillna('')+','+noissues['Email (CC)'].fillna('')
+    noissues['Email']=noissues['Email'].apply(lambda x: x.rstrip(','))
+
     
     # lijst van clubadressen
     clublijst=noissues['Club (0)'].unique()
-    lijst_clubs=GetMailClubs(clublijst,functies=functies)   
+    lijst_clubs,detail_club=GetMailClubs(clublijst,functies=functies)   
     
-    # vewerken
+    # vewerken van printen mailadressen
     print('Geen mailadres\n',noissues[noissues['Email'].isnull()][['Club (0)','Naam','Voornaam']])
-    print('\n')
-    
+    print('\n')    
     print(unique_emails+','+lijst_clubs)
+
+    # verwerken van mailadressen zelf
+    merge=pd.merge(noissues,detail_club.rename(columns={'Email':'Email_club'}),left_on='Club (0)',right_index=True)
+
+    # make total list
+    merge['Email']=merge['Email']+','+merge['Email_club']
+    merge['Email']=merge['Email'].apply(lambda x: x.rstrip(','))
+
+
+    return merge[['Lidnummer','Email']]
 
 
 def getExport():
@@ -228,3 +243,85 @@ def GetClubs(df):
 
     
 
+def send_emails(dataframe_in,smtp_server='mail.tafeltennisantwerpen.be',sender_email='Secretariaat PCA <secretariaat@tafeltennisantwerpen.be>',smtp_port=587,pwd_env_variable='MAIL_PASSWORD',column_receiver='receiver',column_subject='subject',column_message='message',column_attachment='attachment',test_mode=True):
+    ## Send emails
+    ## dataframe_in: dataframe with following columns:
+    ## - sender: e-mail of sender (formatted as Naam < naam@gmail.com>)
+    ## - receiver: e-mail of receiver (formatted as joske@gmail.com,jantje@gmail.com)
+    ## - subject: subject of the e-mail
+    ## - message: message of the e-mail
+    ## smtp_server: smtp server
+    ## smtp_port: smtp port
+    ## pwd_env_variable: environment variable with password
+
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.base import MIMEBase
+    import os
+    from email import encoders
+
+
+    print('\n Start mailing. ')
+    print('\tWill send '+str(len(dataframe_in))+' emails. ')
+
+    # vervang even alle mailadresse
+    if test_mode:
+        dataframe_in['receiver']='hans.hooyberghs@gmail.com'
+        print('Sending emails in test mode')
+    else:
+        print('WARNING: MAILS WILL BE SENT TO ALL ADDRESSES')
+        
+    # Prompt user for input
+    user_input = input("Do you want to continue? (yes/no): ")
+
+    # Check user input
+    if user_input.lower() == "yes":
+        # Continue with the script
+        pass
+    else:
+        # Exit the script
+        print('Ending script')
+        import sys
+        sys.exit()
+
+    # load password
+    sender_password = os.getenv(pwd_env_variable)
+    if sender_password is None:
+        sender_password = input("Enter the sender's email password: ")
+    
+    
+
+    # Start the SMTP session
+    with smtplib.SMTP(smtp_server, smtp_port) as server:
+
+        server.starttls()
+        server.login(sender_email.split('<')[1].strip('>'), sender_password)  
+
+        # loop over dataframe
+        for index, row in dataframe_in.iterrows():
+            # Create a multipart message
+            msg = MIMEMultipart()
+            msg["From"] = sender_email
+            msg["To"] = row[column_receiver]
+            msg["Subject"] = row[column_subject]
+
+            # add attachment if column attachment present
+            if column_attachment in dataframe_in.columns:
+                if row[column_attachment] is not None:
+                    # split based on comma
+                    list=row[column_attachment].split(',')
+                    for item in list:
+                        with open(item, "rb") as attachment:
+                            part = MIMEBase("application", "octet-stream")
+                            part.set_payload(attachment.read())
+                        encoders.encode_base64(part)
+                        part.add_header(
+                            "Content-Disposition",
+                            f"attachment; filename= {item.split('/')[-1]}",
+                        )
+                        msg.attach(part)
+
+            msg.attach(MIMEText(row[column_message], "plain"))
+
+            server.send_message(msg)
