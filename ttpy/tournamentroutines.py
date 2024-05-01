@@ -162,33 +162,30 @@ def TournamentsSaveAndMail(final,clubs_direct,default_items,uitvoer_detail_club,
     #############################################
     print('\nAfrekening per speler')
     selectie_betalen=final[~final.Club.isin(clubs_direct)]
+    if len(selectie_betalen)>0:
+        # mailadressen
+        mailadressen=mailroutines.GetMailinglijst_Lidnummer(selectie_betalen[['Lidnummer']],functies=functies)
 
-    # mailadressen
-    mailadressen=mailroutines.GetMailinglijst_Lidnummer(selectie_betalen[['Lidnummer']],functies=functies)
+        # opslaan lijst in Excel
+        df=selectie_betalen.sort_values('Naam')[['Lidnummer', 'Naam','Voornaam','Club', 'Totaal','Inschrijvingsgeld', column_supplement,
+            'Tornooi',column_reason_supplement]].rename(columns={'Totaal':'Totaal (euro)'})
+        
+        
+        start_mail_send=df.merge(mailadressen)
+        SaveExcel(start_mail_send,uitvoer_detail_individueel,'Saldo')
 
-    # opslaan lijst in Excel
-    df=selectie_betalen.sort_values('Naam')[['Lidnummer', 'Naam','Voornaam','Club', 'Totaal','Inschrijvingsgeld', column_supplement,
-          'Tornooi',column_reason_supplement]].rename(columns={'Totaal':'Totaal (euro)'})
-    
-    
-    start_mail_send=df.merge(mailadressen)
-    SaveExcel(start_mail_send,uitvoer_detail_individueel,'Saldo')
+        # vervang een aantal trefwoorden in mail_in
+        mail_in=default_items['Mailindividueel']
+        start_mail_send.rename(columns={'Email':'receiver'},inplace=True)
+        start_mail_send['subject']='Inschrijvingsgeld tornooien tafeltennis '+start_mail_send['Voornaam']+' '+start_mail_send['Naam']
+        start_mail_send[column_reason_supplement] = start_mail_send[column_reason_supplement].apply(lambda x: f'({x})' if pd.notnull(x) else '')
+        start_mail_send[column_supplement] = start_mail_send[column_supplement].fillna(0)
+        start_mail_send['message']=start_mail_send.apply(lambda row: mail_in.replace('TOTAAL',str(row['Totaal (euro)'])).replace('INSCHRIJVINGSGELDEN',str(row['Inschrijvingsgeld'])).replace('TORNOOIEN',row['Tornooi']).replace('BOETES',str(row[column_supplement])).replace('REDENBOETE',row[column_reason_supplement]).replace('SPELER',row['Voornaam']+' '+row[ 'Naam']),axis=1)
 
-    
+        # stuur mails uit
+        if send_mails:
 
-    
-    # vervang een aantal trefwoorden in mail_in
-    mail_in=default_items['Mailindividueel']
-    start_mail_send.rename(columns={'Email':'receiver'},inplace=True)
-    start_mail_send['subject']='Inschrijvingsgeld tornooien tafeltennis '+start_mail_send['Voornaam']+' '+start_mail_send['Naam']
-    start_mail_send[column_reason_supplement] = start_mail_send[column_reason_supplement].apply(lambda x: f'({x})' if pd.notnull(x) else '')
-    start_mail_send[column_supplement] = start_mail_send[column_supplement].fillna(0)
-    start_mail_send['message']=start_mail_send.apply(lambda row: mail_in.replace('TOTAAL',str(row['Totaal (euro)'])).replace('INSCHRIJVINGSGELDEN',str(row['Inschrijvingsgeld'])).replace('TORNOOIEN',row['Tornooi']).replace('BOETES',str(row[column_supplement])).replace('REDENBOETE',row[column_reason_supplement]).replace('SPELER',row['Voornaam']+' '+row[ 'Naam']),axis=1)
-
-    # stuur mails uit
-    if send_mails:
-
-        mailroutines.send_emails(start_mail_send.iloc[0:2],smtp_server='mail.tafeltennisantwerpen.be',smtp_port=587,test_mode=mail_test)
+            mailroutines.send_emails(start_mail_send.iloc[0:2],smtp_server='mail.tafeltennisantwerpen.be',smtp_port=587,test_mode=mail_test)
 
     # verwerking clubs die rechtsteeks betalen
     #############################################

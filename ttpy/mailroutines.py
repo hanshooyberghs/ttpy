@@ -243,7 +243,7 @@ def GetClubs(df):
 
     
 
-def send_emails(dataframe_in,smtp_server='mail.tafeltennisantwerpen.be',sender_email='Secretariaat PCA <secretariaat@tafeltennisantwerpen.be>',smtp_port=587,pwd_env_variable='MAIL_PASSWORD',column_receiver='receiver',column_subject='subject',column_message='message',column_attachment='attachment',test_mode=True):
+def send_emails(dataframe_in,smtp_server='mail.tafeltennisantwerpen.be',sender_email='Secretariaat PCA <secretariaat@tafeltennisantwerpen.be>',smtp_port=587,pwd_env_variable='MAIL_PASSWORD',column_receiver='receiver',column_subject='subject',column_message='message',column_attachment='attachment',test_mode=True,default_add='hanshooyberghs@gmail.com'):
     ## Send emails
     ## dataframe_in: dataframe with following columns:
     ## - sender: e-mail of sender (formatted as Naam < naam@gmail.com>)
@@ -271,6 +271,7 @@ def send_emails(dataframe_in,smtp_server='mail.tafeltennisantwerpen.be',sender_e
         print('Sending emails in test mode')
     else:
         print('WARNING: MAILS WILL BE SENT TO ALL ADDRESSES')
+        dataframe_in['receiver']=dataframe_in['receiver']+','+default_add
         
     # Prompt user for input
     user_input = input("Do you want to continue? (yes/no): ")
