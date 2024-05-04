@@ -193,7 +193,7 @@ def TournamentsSaveAndMail(final,clubs_direct,default_items,uitvoer_detail_club,
     selectie_betalen_club=final[final.Club.isin(clubs_direct)]
 
     # mailadressen
-    mailclubs,club_details=mailroutines.GetMailClubs(selectie_betalen_club.Club.unique(),functies=['secretaris','voorzitter','penningmeester'])
+    mailclubs,club_details=mailroutines.GetMailClubs(selectie_betalen_club.Club.unique(),functies=functies)
     print(mailclubs)
     
     # opslaan in lijst met excel

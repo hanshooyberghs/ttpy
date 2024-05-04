@@ -304,15 +304,19 @@ def send_emails(dataframe_in,smtp_server='mail.tafeltennisantwerpen.be',sender_e
             # Create a multipart message
             msg = MIMEMultipart()
             msg["From"] = sender_email
-            msg["To"] = row[column_receiver]
+            
+            # split column receiver and drop duplicates
+            receivers = list(set(row[column_receiver].split(',')))
+            msg["To"] = ', '.join(receivers)           
+
             msg["Subject"] = row[column_subject]
 
             # add attachment if column attachment present
             if column_attachment in dataframe_in.columns:
                 if row[column_attachment] is not None:
                     # split based on comma
-                    list=row[column_attachment].split(',')
-                    for item in list:
+                    lijst=row[column_attachment].split(',')
+                    for item in lijst:
                         with open(item, "rb") as attachment:
                             part = MIMEBase("application", "octet-stream")
                             part.set_payload(attachment.read())
