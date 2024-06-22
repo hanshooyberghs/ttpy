@@ -24,7 +24,7 @@ def GetLidnummer(invoer,column_naam='Naam'):
     return noissues[[column_naam,'Lidnummer','Club (0)']]
 
 
-def GetMailinglijst_Naam(invoer,column_naam='Naam',functies=['Secretaris','Voorzitter']):
+def GetMailinglijst_Naam(invoer,column_naam='Naam',functies=['secretaris','voorzitter']):
     # krijg mailinglijst gebaseerd op naam en voornaam
     # input: 
     #   invoer: gpd met naam en voornaam
@@ -51,10 +51,10 @@ def GetMailinglijst_Naam(invoer,column_naam='Naam',functies=['Secretaris','Voorz
     
     # lijst van clubadressen
     clublijst=noissues['Club (0)'].unique()
-    lijst_clubs=GetMailClubs(clublijst,functies=functies)   
+    lijst_clubs=GetMailClubs(clublijst,functies=functies)[0]   
         
     # vewerken
-    print('Geen mailadres\n',noissues[noissues['Email'].isnull()][['Club (0)','naam_combi','Lidnummer']])
+    print('Geen mailadres\n',noissues[noissues['Email'].isnull()][['Club (0)','naam_combi']])
     print('\n')
 
     print(lijst+','+lijst_clubs)
