@@ -105,9 +105,6 @@ def GetMailClubs(clublist,functies=['secretaris','voorzitter']):
     return unique_emails,mails_clubs[['Email']]
 
 
-
-
-
 def GetMailinglijst_Lidnummer(invoer,column_lidnummer='Lidnummer',functies=['secretaris','voorzitter']):
     # krijg mailinglijst gebaseerd op lidnummer
     # input: 
@@ -330,3 +327,4 @@ def send_emails(dataframe_in,smtp_server='mail.tafeltennisantwerpen.be',sender_e
             msg.attach(MIMEText(row[column_message], "plain"))
 
             server.send_message(msg)
+
