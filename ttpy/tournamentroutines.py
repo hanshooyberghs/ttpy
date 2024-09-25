@@ -77,8 +77,10 @@ def GetTournamentEntries(tornooien,inschrijvingsgeld,provincie='A'):
     all_registrations=all_registrations[[w[0]=='A' for w in all_registrations.Club]]
 
     # add dubbels
-    tmp=pd.read_excel('DubbelsVerwerkt.xlsx').drop(columns='ReeksKort')
-    all_registrations=pd.concat([all_registrations,tmp])
+    # if dubbesl exists, add them
+    if os.path.exists('Dubbels.xlsx'):
+        tmp=pd.read_excel('Dubbels.xlsx')
+        all_registrations=pd.concat([all_registrations,tmp])
 
     # all Name and Voornaam to capital letter for first letter of each word
     all_registrations['Naam'] = all_registrations['Naam'].str.title()
@@ -326,3 +328,80 @@ def Inschrijving(lidnummer,tornooi,reeks=None,mail=True,dubbel=False,unregister=
         print(f"Caught a zeep Fault: {fault}")
   
 
+def InschrijvingNaam(naam,tornooi,reeks=None,mail=True,dubbel=False,unregister=False,check=False):
+    # Inschrijven voor tornooi
+    # input:
+    #   lidnummer: lidnummer (of lijst van lidnummers bij dubbel)
+    #   tornooi: tornooi
+    #   reeks: reeks (optioneel, indien niet gegeven: automatisch bepaald)
+    #   mail: send mail or not
+    #   dubbel: gaat het om een dubbel of niet
+    ###################
+
+    # laad leden
+    export,clubs=mailroutines.getExport()
+
+    # zoek lid
+    if isinstance(naam, list):
+        # dubbel
+        lidnummer=[export[export['naam_combi']==w.lower()]['Lidnummer'].iloc[0] for w in naam]
+    else:
+        # enkel
+        lidnummer=export[export['naam_combi']==naam.lower()]['Lidnummer'].iloc[0]
+
+    
+    # client aanmaken
+    wsdl='http://api.vttl.be/0.7/?wsdl'
+    client = zeep.Client(wsdl=wsdl)
+    # tornooien inladen
+    tournaments=client.service.GetTournaments()
+    input_dict = helpers.serialize_object(tournaments)
+
+    # lees paswoord van environmental variables
+    if os.getenv('ACCOUNT_TT'):
+        account = os.getenv('ACCOUNT_TT')
+    else:
+        account = str(input(f"Environmental variable linking to account not set. Please enter the location manually."))
+    if os.getenv('PASWOORD_TT'):
+        paswoord = os.getenv('PASWOORD_TT')
+    else:
+        paswoord = str(input(f"Environmental variable linking to password not set. Please enter the location manually."))
+
+    # achterhaal codes
+    for item in input_dict['TournamentEntries']:
+        if item['Name'].lower()==tornooi.lower():
+            for item2 in item['SerieEntries']:
+                if item2['Name'].lower()==reeks.lower():
+                    index_tornooi=item['UniqueIndex']
+                    index_reeks=item2['UniqueIndex']
+
+    # check whether index_tornooi exists
+    if 'index_tornooi' not in locals():
+        print('Tornooi of reeks niet gevonden, controleer input')
+        print(tornooi,reeks)
+        import sys
+        sys.exit()
+
+    # inschrijven   
+    try:
+        if dubbel:
+            # check whether lidnummer is array
+            if isinstance(naam, list):
+                if not check:
+                    response=client.service.TournamentRegister(TournamentUniqueIndex=index_tornooi,SerieUniqueIndex=index_reeks,PlayerUniqueIndex=lidnummer,Credentials={'Account':account,'Password':paswoord},NotifyPlayer=mail,Unregister=unregister)
+            else:
+                raise ValueError(f"Inschrijving dubbel: lidnummer is geen lijst")
+
+        else:
+            # check whether lidnummer is integer 
+            if isinstance(naam, int):
+                if not check:
+                    response=client.service.TournamentRegister(TournamentUniqueIndex=index_tornooi,SerieUniqueIndex=index_reeks,PlayerUniqueIndex=str(lidnummer),Credentials={'Account':account,'Password':paswoord},NotifyPlayer=mail,Unregister=unregister)
+            else:
+                raise ValueError(f"Inschrijving enkel: lijsten van lidnummers gegeven")
+
+        print('Inschrijving voor ',naam,' (',lidnummer,') in ',tornooi,' in reeks ',reeks,' is gelukt.')
+    except ValueError as ve:
+        print(f"Caught an error: {ve}")               
+    except zeep.exceptions.Fault as fault:
+        print(f"Caught a zeep Fault: {fault}")
