@@ -393,8 +393,8 @@ def InschrijvingNaam(naam,tornooi,reeks=None,mail=True,dubbel=False,unregister=F
                 raise ValueError(f"Inschrijving dubbel: lidnummer is geen lijst")
 
         else:
-            # check whether lidnummer is integer 
-            if isinstance(naam, int):
+            # check whether naam is string 
+            if isinstance(naam, str):
                 if not check:
                     response=client.service.TournamentRegister(TournamentUniqueIndex=index_tornooi,SerieUniqueIndex=index_reeks,PlayerUniqueIndex=str(lidnummer),Credentials={'Account':account,'Password':paswoord},NotifyPlayer=mail,Unregister=unregister)
             else:
