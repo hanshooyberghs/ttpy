@@ -345,6 +345,7 @@ def InschrijvingNaam(naam,tornooi,reeks=None,mail=True,dubbel=False,unregister=F
     if isinstance(naam, list):
         # dubbel
         lidnummer=[export[export['naam_combi']==w.lower()]['Lidnummer'].iloc[0] for w in naam]
+        
     else:
         # enkel
         lidnummer=export[export['naam_combi']==naam.lower()]['Lidnummer'].iloc[0]
