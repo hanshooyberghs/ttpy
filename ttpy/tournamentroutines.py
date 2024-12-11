@@ -9,7 +9,7 @@ from docx import Document
 import os
 
 
-def GetTournamentEntries(tornooien,inschrijvingsgeld,provincie='A'):
+def GetTournamentEntries(tornooien,inschrijvingsgeld,file_dubbels='Dubbels.xlsx',provincie='A'):
     # Get a list of tournaments
     # input:
     #   tornooien: lijst van tornooien (zoals in competitiesite)
@@ -78,8 +78,8 @@ def GetTournamentEntries(tornooien,inschrijvingsgeld,provincie='A'):
 
     # add dubbels
     # if dubbesl exists, add them
-    if os.path.exists('Dubbels.xlsx'):
-        tmp=pd.read_excel('Dubbels.xlsx')
+    if os.path.exists(file_dubbels):
+        tmp=pd.read_excel(file_dubbels)
         all_registrations=pd.concat([all_registrations,tmp])
 
     # all Name and Voornaam to capital letter for first letter of each word
