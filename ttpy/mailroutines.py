@@ -139,10 +139,10 @@ def GetMailinglijst_Lidnummer(invoer,column_lidnummer='Lidnummer',functies=['sec
     print(unique_emails+','+lijst_clubs)
 
     # verwerken van mailadressen zelf
-    merge=pd.merge(noissues,detail_club.rename(columns={'Email':'Email_club'}),left_on='Club (0)',right_index=True)
+    merge=pd.merge(noissues,detail_club.rename(columns={'Email':'Email_club'}),left_on='Club (0)',right_index=True,how='left')
 
     # make total list
-    merge['Email']=merge['Email']+','+merge['Email_club']
+    merge['Email']=merge['Email']+','+merge['Email_club'].fillna('')
     merge['Email']=merge['Email'].apply(lambda x: x.rstrip(','))
 
 
@@ -165,10 +165,10 @@ def getExport():
 
     # add names of clubs
     clubdata = {
-    'Club (0)': ["A003", "A008", "A062", "A074", "A075", "A095", "A097", "A105", "A115", "A117", "A118", "A123", 
+    'Club (0)': ["A000","A003", "A008", "A062", "A074", "A075", "A095", "A097", "A105", "A115", "A117", "A118", "A123", 
                  "A127", "A129", "A130", "A135", "A136", "A138", "A139", "A141", "A142", "A147", "A155", "A159", 
                  "A160", "A167", "A176", "A182", "A186", "A201", "A211", "A212", "A218", "A222"],
-    'NaamClub': ["KTTC Salamander Mechelen", "TTC Brasgata", "KTTC  A.F.P. Antwerpen", "KTTC Sporting Hove", 
+    'NaamClub': ["Individueel","KTTC Salamander Mechelen", "TTC Brasgata", "KTTC  A.F.P. Antwerpen", "KTTC Sporting Hove", 
                  "TTC Rupel", "TTK Turnhout", "KTTC Nijlen-Bevel", "TTK Dessel", "TTK Buhlmann Berlaar", "Geelse TTC", 
                  "TTK Rijkevorsel", "TTC Virtus", "TTC Retie", "Borsbeek TTK", "TTK Schoten", "TTK Minderhout", 
                  "TTC Zoersel", "TTC Blue Rackets", "KTTC Hallaar", "TTK Merksplas", "TTC Tecemo", "TTK Gierle", 

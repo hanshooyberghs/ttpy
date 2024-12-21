@@ -187,7 +187,7 @@ def TournamentsSaveAndMail(final,clubs_direct,default_items,uitvoer_detail_club,
         # stuur mails uit
         if send_mails:
 
-            mailroutines.send_emails(start_mail_send.iloc[0:2],smtp_server='mail.tafeltennisantwerpen.be',smtp_port=587,test_mode=mail_test)
+            mailroutines.send_emails(start_mail_send,smtp_server='mail.tafeltennisantwerpen.be',smtp_port=587,test_mode=mail_test)
 
     # verwerking clubs die rechtsteeks betalen
     #############################################
@@ -212,6 +212,7 @@ def TournamentsSaveAndMail(final,clubs_direct,default_items,uitvoer_detail_club,
     data=selectie_betalen_club.copy()
     cnt=0
     dfs=[]
+    docs=dict()
     for clubnummer in clubs_direct:
         doc = Document(lege_factuur)
         sel=data[data.Club==clubnummer]
@@ -237,12 +238,12 @@ def TournamentsSaveAndMail(final,clubs_direct,default_items,uitvoer_detail_club,
             tmp=sel[['Naam','Voornaam','Totaal','Inschrijvingsgeld',column_supplement,column_reason_supplement]].fillna('').sort_values('Naam')
             doc=AddTable('TABEL',tmp,doc)
 
-            
-            doc.save(os.path.dirname(uitvoer_detail_club)+'/'+clubnummer+'.docx')
+            docs[clubnummer]=os.path.dirname(uitvoer_detail_club)+'/'+clubnummer+'_'+str(startnummer_factuur+cnt)+'.docx'
+            doc.save(docs[clubnummer])
             
             cnt=cnt+1
 
-            # save table
+            # save table            
             SaveExcel(sel[['Naam','Voornaam','Totaal','Inschrijvingsgeld',column_supplement,column_reason_supplement,'Tornooi']],os.path.dirname(uitvoer_detail_club)+'/'+clubnummer+'.xlsx','Saldo')
     
     # send emails
@@ -250,7 +251,7 @@ def TournamentsSaveAndMail(final,clubs_direct,default_items,uitvoer_detail_club,
         club_details['subject']='Inschrijvingsgeld tornooien tafeltennis '+club_details.index
         club_details['message']=default_items['MailClubs']
         club_details['receiver']=club_details['Email']
-        club_details['attachment']=os.path.dirname(uitvoer_detail_club)+'/'+club_details.index+'.xlsx,'+os.path.dirname(uitvoer_detail_club)+'/'+club_details.index+'.docx'
+        club_details['attachment']=[docs[w] for w in club_details.index]
         mailroutines.send_emails(club_details,smtp_server='mail.tafeltennisantwerpen.be',smtp_port=587,test_mode=mail_test)
 
 def Inschrijving(lidnummer,tornooi,reeks=None,mail=True,dubbel=False,unregister=False,check=False):
