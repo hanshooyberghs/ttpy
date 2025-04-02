@@ -35,7 +35,7 @@ def GetMailinglijst_Naam(invoer,column_naam='Naam',functies=['secretaris','voorz
     
     # get export
     export,clubs=getExport()
-    export['naam_combi']=(export['Naam']+' '+export['Voornaam']).str.lower().str.strip()
+    export['naam_combi']=(export['Naam'].str.strip()+' '+export['Voornaam'].str.strip()).str.lower().str.strip()
     
     # lower
     invoer['naam_combi']=invoer[column_naam].str.lower().str.strip()

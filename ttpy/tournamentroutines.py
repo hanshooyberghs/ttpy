@@ -40,8 +40,8 @@ def GetTournamentEntries(tornooien,inschrijvingsgeld,file_dubbels='Dubbels.xlsx'
                 # gratis in A-reeks dames en heren
                 if not ((serie['Name']== 'Dames A')or(serie['Name']=='Heren A')):
                     # methode werkt momenteel niet voor dubbels
-                    if not ('dubbel' in serie['Name'].lower()):
-                            
+                    if not any(sub in serie['Name'].lower() for sub in ['dubbel', 'doubles', 'mixed', 'mixte']):
+                        print('\t opgenomen reeks:',serie['Name'])    
                         nummers=[w['Member']['UniqueIndex'] for w in serie['RegistrationEntries']]
                         nummers=pd.DataFrame(nummers,columns=['Lidnummer'])
                         nummers['Tornooi']=item['Name'] 
@@ -65,6 +65,8 @@ def GetTournamentEntries(tornooien,inschrijvingsgeld,file_dubbels='Dubbels.xlsx'
                             nummers['Inschrijvingsgeld']=inschrijvingsgeld[item['Name']]
 
                         dfs.append(nummers)
+                    else:
+                        print('\t Niet opgenomen reeks:',serie['Name'])
 
 
     #combine all
@@ -75,6 +77,7 @@ def GetTournamentEntries(tornooien,inschrijvingsgeld,file_dubbels='Dubbels.xlsx'
 
     # select province
     all_registrations=all_registrations[[w[0]=='A' for w in all_registrations.Club]]
+    all_registrations=all_registrations[all_registrations['Club']!='AFTT']
 
     # add dubbels
     # if dubbesl exists, add them
@@ -98,7 +101,7 @@ def GetTournamentEntries(tornooien,inschrijvingsgeld,file_dubbels='Dubbels.xlsx'
 
     # check on duplicated lidnummer
     if final['Lidnummer'].duplicated().sum()>0:
-        print('Duplicated lidnummer')
+        print('Duplicated lidnummer, stopping')
         print(final[final['Lidnummer'].duplicated()])
         import sys
         sys.exit()
