@@ -94,6 +94,9 @@ def GetTournamentEntries(tornooien,inschrijvingsgeld,file_dubbels='Dubbels.xlsx'
     all_registrations['Naam']=all_registrations['Naam'].str.strip()
     all_registrations['Voornaam']=all_registrations['Voornaam'].str.strip()
 
+    # add price in name of tournament
+    all_registrations['Tornooi']=all_registrations['Tornooi']+' (EUR '+all_registrations['Inschrijvingsgeld'].astype(str)+')'
+
     # convert to simple list
     combi_amount=all_registrations.groupby(['Lidnummer','Naam','Voornaam','Club'])[['Inschrijvingsgeld']].sum()
     combi_list_tournaments=all_registrations.groupby(['Lidnummer','Naam','Voornaam','Club'])['Tornooi'].apply(list).apply(lambda p:','.join(p))
@@ -247,14 +250,15 @@ def TournamentsSaveAndMail(final,clubs_direct,default_items,uitvoer_detail_club,
             cnt=cnt+1
 
             # save table            
-            SaveExcel(sel[['Naam','Voornaam','Totaal','Inschrijvingsgeld',column_supplement,column_reason_supplement,'Tornooi']],os.path.dirname(uitvoer_detail_club)+'/'+clubnummer+'.xlsx','Saldo')
+            SaveExcel(sel[['Naam','Voornaam','Totaal','Inschrijvingsgeld',column_supplement,column_reason_supplement,'Tornooi']],docs[clubnummer].replace('docx','xlsx'),'Saldo')
+
     
     # send emails
     if send_mails:
         club_details['subject']='Inschrijvingsgeld tornooien tafeltennis '+club_details.index
         club_details['message']=default_items['MailClubs']
         club_details['receiver']=club_details['Email']
-        club_details['attachment']=[docs[w] for w in club_details.index]
+        club_details['attachment']=[docs[w]+','+docs[w].replace('docx','xlsx') for w in club_details.index]
         mailroutines.send_emails(club_details,smtp_server='mail.tafeltennisantwerpen.be',smtp_port=587,test_mode=mail_test)
 
 def Inschrijving(lidnummer,tornooi,reeks=None,mail=True,dubbel=False,unregister=False,check=False):

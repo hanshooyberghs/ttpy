@@ -265,6 +265,7 @@ def send_emails(dataframe_in,smtp_server='mail.tafeltennisantwerpen.be',sender_e
     # vervang even alle mailadresse
     if test_mode:
         dataframe_in['receiver']='hans.hooyberghs@gmail.com'
+        dataframe_in=dataframe_in.iloc[0:5]
         print('Sending emails in test mode')
     else:
         print('WARNING: MAILS WILL BE SENT TO ALL ADDRESSES')
