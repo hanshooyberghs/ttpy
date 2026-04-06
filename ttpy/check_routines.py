@@ -14,6 +14,7 @@ def checkall():
     checkGeboortedatum()
     checkDamesOpHeren()
     
+    
 
 
 
@@ -46,6 +47,10 @@ def checkStatuten():
     print('\n')
     print('=> Statuut recreanten')
     print(data[(data['Statuut (0)']=='recreant-reserve')&(~data['Klassement Heren (0)'].isin(['NG','D6','E0','E2','E4','E6']))][['Naam','Voornaam','Club (0)','NaamClub','Klassement Heren (0)','Statuut (0)']])
+
+    print('\n')
+    print('=> Statuut secretarissen en voorzitters')
+    print(data[(data['Statuut (0)']!='competitief lid') & (data['Club Funtie (0)'].isin(['secretaris','voorzitter']))][['Naam','Voornaam','Club (0)','NaamClub','Club Funtie (0)','Statuut (0)']])
 
 
 def checkGeboortedatum():

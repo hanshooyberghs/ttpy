@@ -9,7 +9,7 @@ from docx import Document
 import os
 
 
-def GetTournamentEntries(tornooien,inschrijvingsgeld,file_dubbels='Dubbels.xlsx',provincie='A'):
+def GetTournamentEntries(tornooien,inschrijvingsgeld,file_dubbels='Dubbels.xlsx',provincie='A',dubbels_gebruiken=False):
     # Get a list of tournaments
     # input:
     #   tornooien: lijst van tornooien (zoals in competitiesite)
@@ -40,23 +40,17 @@ def GetTournamentEntries(tornooien,inschrijvingsgeld,file_dubbels='Dubbels.xlsx'
                 # gratis in A-reeks dames en heren
                 if not ((serie['Name']== 'Dames A')or(serie['Name']=='Heren A')):
                     # methode werkt momenteel niet voor dubbels
-                    if not any(sub in serie['Name'].lower() for sub in ['dubbel', 'doubles', 'mixed', 'mixte']):
+                
+                    if (not any(sub in serie['Name'].lower() for sub in ['dubbel', 'doubles', 'mixed', 'mixte','Menu','menu']) or dubbels_gebruiken):
                         print('\t opgenomen reeks:',serie['Name'])    
                         nummers=[w['Member']['UniqueIndex'] for w in serie['RegistrationEntries']]
                         nummers=pd.DataFrame(nummers,columns=['Lidnummer'])
-                        nummers['Tornooi']=item['Name'] 
+                        nummers['Tornooi']=item['Name'] if item['Name'] != 'BK A eindtabellen - CB A tableaux final' else 'BK A - CB A'
                         nummers['reeks']=item['Name']+' '+serie['Name']
                         nummers['Naam']=[w['Member']['LastName'] for w in serie['RegistrationEntries']]
                         nummers['Voornaam']=[w['Member']['FirstName'] for w in serie['RegistrationEntries']]
                         nummers['Club']=[w['Club']['UniqueIndex'] for w in serie['RegistrationEntries']]
                         
-                        # aanpassing voor dubbels: als 'dubbel gemengd' in reeks, dan 'Dubbel Gemengd' toevoegen aan tornooi
-                        if 'dubbel gemengd' in serie['Name'].lower():
-                            nummers['Tornooi']=nummers['Tornooi']+' Dubbel Gemengd' 
-                        
-                        # anders: als nog dubbel: 'Dubbel' toevoegen aan tornooi
-                        elif 'dubbel' in serie['Name'].lower():
-                            nummers['Tornooi']=nummers['Tornooi']+' Dubbel'
 
                         # inschrijvingsgeld per tornooi
                         if isinstance(inschrijvingsgeld, int):
@@ -112,24 +106,49 @@ def GetTournamentEntries(tornooien,inschrijvingsgeld,file_dubbels='Dubbels.xlsx'
     return final,all_registrations
 
 def AddFines(final,file_boetes,tag_lidnummer='Lidnummer',tag_supplement='Supplement'):
-    # add fines (non participation), merging on column Lidnummer
+    # add fines (non participation), merging on Naam + Voornaam
     #  input:
     #   final: input dataframe with entries
     #   boets: excel file with fines. Should contain columns Lidnummer, Supplement and Reden Supplement
     
-    # load input and check
+    # load input
     boetes=pd.read_excel(file_boetes)
-        
-    # checks
-    missing_columns = [column for column in [tag_lidnummer,tag_supplement] if column not in boetes.columns]
-    
-    if missing_columns:
-        raise ValueError(f"Missing columns in DataFrame: {', '.join(missing_columns)}")
-        sys.exit(1)
 
-    # merge
-    final=final.merge(boetes.drop(columns='Naam'),on='Lidnummer',how='left')
-    final['Totaal']=final['Inschrijvingsgeld']+final['Supplement'].fillna(0)
+    # merge op lidnummer
+    final=final.merge(boetes[[tag_lidnummer,tag_supplement,'Reden Supplement']],left_on=tag_lidnummer,right_on=tag_lidnummer,how='left')
+
+    # check op boete-lijnen die niet gematcht zijn en voeg ze toe
+    unmatched_boetes=boetes.merge(
+        final[[tag_lidnummer]].drop_duplicates(),
+        on=tag_lidnummer,
+        how='left',
+        indicator=True
+    )
+    unmatched_boetes=unmatched_boetes[unmatched_boetes['_merge']=='left_only']
+
+    if len(unmatched_boetes)>0:
+        print('\nBoetes zonder match in final (worden toegevoegd):')
+        cols_to_print=[w for w in ['Naam','Voornaam',tag_lidnummer,tag_supplement,'Reden Supplement'] if w in unmatched_boetes.columns]
+        print(unmatched_boetes[cols_to_print])
+
+        add_rows=pd.DataFrame(columns=final.columns)
+
+        # kopieer beschikbare velden vanuit boetes
+        for col in unmatched_boetes.columns:
+            if col in add_rows.columns and col!='_merge':
+                add_rows[col]=unmatched_boetes[col].values
+
+        # standaardwaarden voor niet-ingeschreven spelers met boete
+        if 'Inschrijvingsgeld' in add_rows.columns:
+            add_rows['Inschrijvingsgeld']=0
+        if 'Tornooi' in add_rows.columns:
+            add_rows['Tornooi']='Geen'
+        if 'Club' in add_rows.columns:
+            add_rows['Club']=add_rows['Club'].fillna('')
+
+        final=pd.concat([final,add_rows],ignore_index=True)
+
+    final['Totaal']=final['Inschrijvingsgeld']+final[tag_supplement].fillna(0)
     
     return final
     
