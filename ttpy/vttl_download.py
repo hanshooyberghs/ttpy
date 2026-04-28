@@ -37,6 +37,7 @@ VTTL_MAIL_SUBJ  = "Export VTTL-database"
 
 WAIT_SECONDS    = 300
 POLL_INTERVAL   = 10
+RECENT_WINDOW   = 1800   # accept emails up to 30 min old before triggering
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -90,42 +91,49 @@ def _trigger_report(vttl_pwd: str) -> datetime.datetime:
     return triggered_at
 
 
-def _fetch_from_imap(mail_pwd: str, triggered_at: datetime.datetime) -> dict:
+def _search_imap(mail_pwd: str, not_before: float) -> dict:
+    """Return attachment dict from the most recent matching email after not_before."""
     from email.utils import parsedate_to_datetime
+    m = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
+    m.login(IMAP_USER, mail_pwd)
+    m.select(IMAP_FOLDER)
+    status, ids = m.search(
+        None,
+        "FROM", f'"{VTTL_MAIL_FROM}"',
+        "SUBJECT", f'"{VTTL_MAIL_SUBJ}"',
+    )
+    for mid in reversed(ids[0].split()):
+        status, data = m.fetch(mid, "(RFC822)")
+        msg = email.message_from_bytes(data[0][1])
+        try:
+            mail_dt = parsedate_to_datetime(msg.get("Date", ""))
+            if mail_dt.timestamp() < not_before:
+                break   # messages are ordered oldest-first; no point checking further
+        except Exception:
+            pass
+        found = {}
+        for part in msg.walk():
+            fname = part.get_filename()
+            if fname and fname.endswith(".csv"):
+                found[fname] = part.get_payload(decode=True)
+        if found:
+            m.logout()
+            return found
+    m.logout()
+    return {}
 
+
+def _fetch_from_imap(mail_pwd: str, triggered_at: datetime.datetime) -> dict:
     deadline = time.time() + WAIT_SECONDS
+    # Accept emails that arrived up to RECENT_WINDOW seconds before trigger
+    not_before = triggered_at.timestamp() - RECENT_WINDOW
     print(f"⏳ Wachten op email van {VTTL_MAIL_FROM} (max {WAIT_SECONDS}s) …")
 
     while time.time() < deadline:
         try:
-            m = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
-            m.login(IMAP_USER, mail_pwd)
-            m.select(IMAP_FOLDER)
-
-            status, ids = m.search(
-                None,
-                "FROM", f'"{VTTL_MAIL_FROM}"',
-                "SUBJECT", f'"{VTTL_MAIL_SUBJ}"',
-            )
-            for mid in reversed(ids[0].split()):
-                status, data = m.fetch(mid, "(RFC822)")
-                msg = email.message_from_bytes(data[0][1])
-                try:
-                    mail_dt = parsedate_to_datetime(msg.get("Date", ""))
-                    if mail_dt.timestamp() < triggered_at.timestamp() - 5:
-                        continue
-                except Exception:
-                    pass
-                found = {}
-                for part in msg.walk():
-                    fname = part.get_filename()
-                    if fname and fname.endswith(".csv"):
-                        found[fname] = part.get_payload(decode=True)
-                if found:
-                    m.logout()
-                    return found
-
-            m.logout()
+            found = _search_imap(mail_pwd, not_before)
+            if found:
+                return found
         except Exception as e:
             print(f"  IMAP fout: {e}")
 
