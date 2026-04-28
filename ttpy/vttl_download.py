@@ -76,7 +76,7 @@ def _trigger_report(vttl_pwd: str) -> datetime.datetime:
         s.post(
             f"{VTTL_BASE_URL}/report.jspa",
             data={
-                "filterProvincie": "", "filterAansluitingsNrClub": "",
+                "filterProvincie": "Antwerpen", "filterAansluitingsNrClub": "",
                 "filterActief": "true", "extraLabelText": "",
                 "startLabel": "1", "selectedLabel": "0",
                 "selectedReport": "LedenLijst",
