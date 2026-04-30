@@ -13,6 +13,7 @@ Voert drie categorieën controles uit:
 Gebruik ``checkall()`` om alle controles in één keer uit te voeren.
 """
 import pandas as pd
+from ttpy.mailroutines import getExport
 
 
 def loadData():
@@ -34,6 +35,7 @@ def checkall():
     Roept achtereenvolgens ``checkStatuten()``, ``checkGeboortedatum()`` en
     ``checkDamesOpHeren()`` aan en drukt de resultaten af via stdout.
     """
+    checkStatuten()
     checkGeboortedatum()
     checkDamesOpHeren()
 

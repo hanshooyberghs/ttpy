@@ -42,6 +42,7 @@ def run():
         --config (str): Pad naar het TOML-configuratiebestand.
             Standaard ``'mails_tornooi.toml'``.
     """
+    parser = argparse.ArgumentParser(description='Haal mailing op van tornooi-inschrijvingen.')
     parser.add_argument('--config', default='mails_tornooi.toml',
                         help='Pad naar config bestand (default: mails_tornooi.toml)')
     args = parser.parse_args()

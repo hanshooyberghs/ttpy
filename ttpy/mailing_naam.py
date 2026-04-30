@@ -37,6 +37,7 @@ def run():
         --config (str): Pad naar het TOML-configuratiebestand.
             Standaard ``'mailing_naam.toml'``.
     """
+    parser = argparse.ArgumentParser(description='Haal mailinglijst op basis van namen.')
     parser.add_argument('--config', default='mailing_naam.toml',
                         help='Pad naar config bestand (default: mailing_naam.toml)')
     args = parser.parse_args()

@@ -19,6 +19,7 @@ def run():
     ``checkGeboortedatum()`` en ``checkDamesOpHeren()`` uitvoert en de
     resultaten afdrukt via stdout.
     """
+    tc.checkall()
 
 
 if __name__ == '__main__':
