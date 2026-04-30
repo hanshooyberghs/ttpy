@@ -1,0 +1,15 @@
+# mailing_naam.toml
+# Configuratie voor: ttpy_mailing_naam
+#
+# functies: kies uit secretaris, voorzitter, penningmeester,
+#           interclubSeniors, interclubJeugd, aanspreekpunt
+# Lege lijst = enkel persoonlijke mailadressen, geen clubadressen
+
+functies = []
+
+# Namen: allemaal onder elkaar, komma-gescheiden, of als TOML-array
+namen = """
+Peeters Jan
+Maes Koen
+De Smedt Lien
+"""

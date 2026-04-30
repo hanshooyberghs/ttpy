@@ -1,0 +1,13 @@
+# mails_tornooi.toml
+# Configuratie voor: ttpy_mails_tornooi
+#
+# tornooien: namen van tornooien (exact zoals op de VTTL-site),
+#            onder elkaar, komma-gescheiden of als TOML-array
+# functies:  welke clubfuncties te mailen, komma-gescheiden
+
+functies = "secretaris"
+
+tornooien = """
+Provinciaal Kampioenschap Veteranen Antwerpen
+Provinciaal Criterium Veteranen Antwerpen - Fase 1
+"""

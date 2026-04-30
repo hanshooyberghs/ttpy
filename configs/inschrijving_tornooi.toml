@@ -1,0 +1,26 @@
+# inschrijving_tornooi.toml
+# Configuratie voor: ttpy_inschrijving_tornooi
+#
+# tornooi:    naam van het tornooi (exact zoals op de VTTL-site)
+# mail:       stuur bevestigingsmail naar speler (true/false)
+# unregister: uitschrijven in plaats van inschrijven (true/false)
+#
+# [[inschrijvingen]]
+#   reeks  = "naam van de reeks"
+#   namen  = "Naam Voornaam"                        # enkeling
+#   namen  = "Naam1 Voornaam1, Naam2 Voornaam2"     # dubbel: komma-gescheiden
+#   dubbel = false
+
+tornooi    = "Provinciaal Kampioenschap Jeugd Antwerpen"
+mail       = true
+unregister = false
+
+[[inschrijvingen]]
+reeks  = "Heren B"
+namen  = "Peeters Jan"
+dubbel = false
+
+[[inschrijvingen]]
+reeks  = "Dubbel Gemengd -19"
+namen  = "Michielsen Jente, Belmans Maithe"
+dubbel = true

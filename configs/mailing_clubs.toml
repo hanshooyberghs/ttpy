@@ -1,0 +1,10 @@
+# mailing_clubs.toml
+# Configuratie voor: ttpy_mailing_clubs
+#
+# functies: kies uit secretaris, voorzitter, penningmeester,
+#           interclubSeniors, interclubJeugd, aanspreekpunt
+# clubs: (gedeeltelijke) clubnamen, komma-gescheiden of onder elkaar
+
+functies = "secretaris, voorzitter"
+
+clubs = "Turnhout, Rupel, Mechelen"

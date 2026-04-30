@@ -27,6 +27,7 @@ Vereiste omgevingsvariabelen (stel in via `.env`, shell-profiel of het besturing
 
 Alle commando's zijn beschikbaar na `conda activate ttpy`.  
 Elke tool leest zijn invoer uit een **TOML-configuratiebestand**.  
+Voorbeeldconfigs staan in de `configs/` map van het package.  
 Standaard wordt gezocht naar `<naam>.toml` in de huidige map; een alternatief pad opgeven kan via `--config`.
 
 ```bash
