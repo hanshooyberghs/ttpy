@@ -3,6 +3,13 @@ ttpy_mailing_clubs
 ------------------
 Haal mailinglijst op basis van clubnamen.
 Config: mailing_clubs.toml (of opgegeven via --config)
+
+Config-formaat:
+    clubs    = ["Salamander", "Brasgata"]   # (gedeeltelijke) clubnamen
+    functies = ["secretaris", "voorzitter"] # optioneel
+
+Gebruik:
+    ttpy_mailing_clubs [--config mailing_clubs.toml]
 """
 import argparse
 import tomllib
@@ -26,12 +33,32 @@ def _parse_list(value):
 
 
 def strip_prefix(naam: str) -> str:
-    naam = re.sub(r'^(k?ttc?k?|omni|geelse)\s+', '', naam.strip(), flags=re.IGNORECASE)
+    """Verwijder gangbare clubprefixen voor fuzzy matching op clubnaam.
+
+    Haalt prefixen zoals ``ttc``, ``kttc``, ``ttk``, ``omni`` en ``geelse``
+    weg zodat zoekopdrachten op de kernnaam van de club werken.
+
+    Args:
+        naam (str): Volledige clubnaam.
+
+    Returns:
+        str: Clubnaam in kleine letters zonder prefix en witruimte.
+    """
     return naam.lower().strip()
 
 
 def run():
-    parser = argparse.ArgumentParser(description='Haal mailinglijst op basis van clubnamen.')
+    """Lees de config, zoek clubs op en druk de mailinglijst af via stdout.
+
+    Laadt het TOML-configuratiebestand (standaard ``mailing_clubs.toml``),
+    zoekt clubs op naam (deelstring, hoofdletterongevoelig, prefix-tolerant)
+    en drukt een kommagescheiden lijst van unieke e-mailadressen af.
+    Niet-gevonden clubs worden gerapporteerd.
+
+    Command-line argumenten:
+        --config (str): Pad naar het TOML-configuratiebestand.
+            Standaard ``'mailing_clubs.toml'``.
+    """
     parser.add_argument('--config', default='mailing_clubs.toml',
                         help='Pad naar config bestand (default: mailing_clubs.toml)')
     args = parser.parse_args()

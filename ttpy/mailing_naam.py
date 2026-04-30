@@ -3,6 +3,13 @@ ttpy_mailing_naam
 -----------------
 Haal mailinglijst op basis van een lijst namen.
 Config: mailing_naam.toml (of opgegeven via --config)
+
+Config-formaat:
+    namen   = ["Achternaam Voornaam", ...]  # of newline-/kommagescheiden string
+    functies = ["secretaris", "voorzitter"]  # optioneel, standaard leeg
+
+Gebruik:
+    ttpy_mailing_naam [--config mailing_naam.toml]
 """
 import argparse
 import tomllib
@@ -20,7 +27,16 @@ def _parse_list(value):
 
 
 def run():
-    parser = argparse.ArgumentParser(description='Haal mailinglijst op basis van namen.')
+    """Lees de config, haal namen op en druk de mailinglijst af via stdout.
+
+    Laadt het TOML-configuratiebestand (standaard ``mailing_naam.toml``),
+    parseert de namenlijst en optionele functies, en roept
+    ``GetMailinglijst_Naam()`` aan.
+
+    Command-line argumenten:
+        --config (str): Pad naar het TOML-configuratiebestand.
+            Standaard ``'mailing_naam.toml'``.
+    """
     parser.add_argument('--config', default='mailing_naam.toml',
                         help='Pad naar config bestand (default: mailing_naam.toml)')
     args = parser.parse_args()

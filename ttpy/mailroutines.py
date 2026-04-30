@@ -1,3 +1,18 @@
+"""
+mailroutines.py
+---------------
+Routines voor het opbouwen van mailinglijsten en het versturen van e-mails
+op basis van de VTTL-ledenexport (Provincie Antwerpen).
+
+Functies:
+    getExport()               – Lees de VTTL CSV-export in en voeg clubnamen toe.
+    GetClubs()                – Herstructureer ledendata naar contactinfo per club.
+    GetLidnummer()            – Zoek lidnummers op basis van naam.
+    GetMailinglijst_Naam()    – Bouw komma-gescheiden mailinglijst op basis van namen.
+    GetMailinglijst_Lidnummer() – Bouw mailinglijst op basis van lidnummers.
+    GetMailClubs()            – Haal clubcontact-emails op per functierol.
+    send_emails()             – Verstuur e-mails via SMTP (met optionele bijlagen).
+"""
 # coding: utf-8
 import sys
 import os
@@ -8,11 +23,24 @@ from email.mime.base import MIMEBase
 from email import encoders
 import pandas as pd
 
-def GetLidnummer(invoer,column_naam='Naam'):
-    # krijg lidnummer gebaseerd op naam en voornaam
-    # input:
-    #   invoer: gpd met naam en voornaam
-    #   column_naam: kolom met naam in
+def GetLidnummer(invoer, column_naam='Naam'):
+    """Zoek lidnummers op basis van naam en voornaam.
+
+    Combineert de opgegeven namen met de VTTL-export (hoofdletterongevoelig) en
+    retourneert de overeenkomende lidnummers en clubcodes.  Rijen zonder match
+    worden gerapporteerd en weggelaten uit het resultaat.
+
+    Args:
+        invoer (pandas.DataFrame): DataFrame met tenminste een kolom die naam en
+            voornaam bevat (gecombineerd of apart, afhankelijk van ``column_naam``).
+        column_naam (str, optional): Naam van de kolom in ``invoer`` die de
+            volledige naam (voornaam + achternaam) bevat.
+            Standaard ``'Naam'``.
+
+    Returns:
+        pandas.DataFrame: DataFrame met kolommen ``[column_naam, 'Lidnummer',
+        'Club (0)']`` voor enkel de gevonden leden.
+    """
 
     # get export
     export,clubs=getExport()
@@ -30,13 +58,26 @@ def GetLidnummer(invoer,column_naam='Naam'):
     return noissues[[column_naam,'Lidnummer','Club (0)']]
 
 
-def GetMailinglijst_Naam(invoer,column_naam='Naam',functies=['secretaris','voorzitter']):
-    # krijg mailinglijst gebaseerd op naam en voornaam
-    # input:
-    #   invoer: gpd met naam en voornaam
-    #   column_naam: kolom met naam in
-    #   column_voornaam:  kolom met voornaam in
-    #   functies: functies om te mailen
+def GetMailinglijst_Naam(invoer, column_naam='Naam', functies=['secretaris', 'voorzitter']):
+    """Bouw een komma-gescheiden mailinglijst op basis van een lijst persoonsnamen.
+
+    Zoekt elk persoon op in de VTTL-export en verzamelt diens primaire en CC-
+    e-mailadressen.  Daarnaast worden de clubcontactadressen (voor de opgegeven
+    functies) van de betrokken clubs toegevoegd.  Onbekende namen en ontbrekende
+    adressen worden gerapporteerd via stdout.
+
+    Args:
+        invoer (pandas.DataFrame): DataFrame met tenminste een kolom met volledige
+            namen (zie ``column_naam``).
+        column_naam (str, optional): Naam van de kolom met de volledige naam
+            (achternaam + voornaam).  Standaard ``'Naam'``.
+        functies (list[str], optional): Lijst van clubfuncties waarvan de
+            contactadressen worden meegenomen.
+            Standaard ``['secretaris', 'voorzitter']``.
+
+    Returns:
+        None: De resulterende mailinglijst wordt afgedrukt via stdout.
+    """
 
 
     # get export
@@ -66,11 +107,32 @@ def GetMailinglijst_Naam(invoer,column_naam='Naam',functies=['secretaris','voorz
     print(lijst+','+lijst_clubs)
 
 
-def GetMailClubs(clublist,functies=['secretaris','voorzitter']):
-    # krijg mailinglijst van clubs gebaseerd op de functies en
-    # invoer:
-    #   clublist: lijst met clubs
-    #   functies: lijst met functies
+def GetMailClubs(clublist, functies=['secretaris', 'voorzitter']):
+    """Haal e-mailadressen op van clubcontacten voor opgegeven functies.
+
+    Valideert de gevraagde functies en retourneert zowel een komma-gescheiden
+    string met unieke adressen als een DataFrame met per club het gecombineerde
+    adres.  Ontbrekende adressen worden vervangen door het standaard-adres
+    ``hans.hooyberghs@gmail.com``.
+
+    Args:
+        clublist (list[str]): Lijst van clubcodes (bv. ``['A008', 'A075']``).
+        functies (list[str], optional): Lijst van functies waarvoor adressen
+            worden opgehaald.  Geldige waarden: ``'interclubJeugd'``,
+            ``'interclubSeniors'``, ``'secretaris'``, ``'voorzitter'``,
+            ``'penningmeester'``, ``'aanspreekpunt'``.
+            Standaard ``['secretaris', 'voorzitter']``.
+
+    Returns:
+        tuple[str, pandas.DataFrame]:
+            - Komma-gescheiden string met unieke e-mailadressen.
+            - DataFrame geïndexeerd op clubcode met kolom ``'Email'``
+              (gecombineerde adressen per club).
+
+    Raises:
+        SystemExit: Als een of meerdere functies niet tot de geldige opties
+            behoren.
+    """
 
     # check options
     options_functies=['interclubJeugd',
@@ -109,12 +171,28 @@ def GetMailClubs(clublist,functies=['secretaris','voorzitter']):
     return unique_emails,mails_clubs[['Email']]
 
 
-def GetMailinglijst_Lidnummer(invoer,column_lidnummer='Lidnummer',functies=['secretaris','voorzitter']):
-    # krijg mailinglijst gebaseerd op lidnummer
-    # input:
-    #   invoer: gpd met naam en voornaam
-    #   column_lidnummer: kolom met lidnummer in
-    #   functies: functies om te mailen
+def GetMailinglijst_Lidnummer(invoer, column_lidnummer='Lidnummer', functies=['secretaris', 'voorzitter']):
+    """Bouw een mailinglijst op basis van lidnummers.
+
+    Koppelt de opgegeven lidnummers aan de VTTL-export om persoonlijke
+    e-mailadressen te verkrijgen.  Vervolgens worden de clubcontactadressen
+    (voor de opgegeven functies) per lid toegevoegd zodat elke rij in het
+    resultaat een volledig adressenset bevat voor zowel het lid als diens club.
+
+    Args:
+        invoer (pandas.DataFrame): DataFrame met tenminste een kolom met
+            lidnummers (zie ``column_lidnummer``).
+        column_lidnummer (str, optional): Naam van de kolom met lidnummers.
+            Standaard ``'Lidnummer'``.
+        functies (list[str], optional): Lijst van clubfuncties waarvan de
+            contactadressen worden meegenomen.
+            Standaard ``['secretaris', 'voorzitter']``.
+
+    Returns:
+        pandas.DataFrame: DataFrame met kolommen ``['Lidnummer', 'Email']``
+        waarbij ``'Email'`` alle relevante adressen (persoonlijk + club)
+        kommagescheiden bevat.
+    """
 
     # get export
     export,clubs=getExport()
@@ -154,7 +232,23 @@ def GetMailinglijst_Lidnummer(invoer,column_lidnummer='Lidnummer',functies=['sec
 
 
 def getExport():
-    # lees export in
+    """Lees de VTTL-ledenexport in en verrijk met clubnamen.
+
+    Het pad naar het CSV-bestand wordt bepaald via de omgevingsvariabele
+    ``EXPORT_TT``.  Indien die niet is ingesteld, wordt de gebruiker
+    interactief om het pad gevraagd.  Na het inlezen worden clubnamen
+    toegevoegd op basis van een vaste codelijst voor Provincie Antwerpen.
+
+    Returns:
+        tuple[pandas.DataFrame, pandas.DataFrame]:
+            - ``export``: Volledig ledenbestand inclusief kolom ``'NaamClub'``
+              en gecombineerde naamkolom ``'naam_combi'``.
+            - ``clubs``: Per-club geaggregeerd DataFrame (zie ``GetClubs``)
+              geïndexeerd op clubcode, inclusief ``'NaamClub'``.
+
+    Raises:
+        SystemExit: Indirect als het CSV-bestand niet leesbaar is.
+    """
     if os.getenv('EXPORT_TT'):
         export_tt = os.getenv('EXPORT_TT')
     else:
@@ -187,7 +281,24 @@ def getExport():
 
 
 def GetClubs(df):
-    # Identify columns that start with "Club fun" (case insensitive)
+    """Herstructureer ledendata naar contactinformatie per club en rol.
+
+    Filtert leden met een clubfunctie, groepeert ze per clubcode en rol, en
+    bouwt een breed DataFrame met per club de namen en e-mailadressen voor elke
+    functierol (interclubJeugd, interclubSeniors, secretaris, voorzitter,
+    penningmeester, aanspreekpunt).
+
+    Args:
+        df (pandas.DataFrame): Volledig ledenexport-DataFrame zoals ingelezen
+            door ``getExport()``.  Verwacht kolommen als ``'Club (0)'``,
+            ``'Naam'``, ``'Voornaam'``, ``'Email'``, ``'Email (CC)'`` en
+            kolommen die beginnen met ``'Club fun'``.
+
+    Returns:
+        pandas.DataFrame: DataFrame geïndexeerd op clubcode (``'Club (0)'``)
+        met voor elke rol twee kolommen: ``'{rol} Names'`` en
+        ``'{rol} Emails'``.
+    """
     club_fun_columns = [col for col in df.columns if col.lower().startswith("club fun")]
 
     # Filter rows where at least one of the columns that start with "Club fun" is not empty
@@ -243,16 +354,44 @@ def GetClubs(df):
 
 
 
-def send_emails(dataframe_in,smtp_server='mail.tafeltennisantwerpen.be',sender_email='Secretariaat PCA <secretariaat@tafeltennisantwerpen.be>',smtp_port=587,pwd_env_variable='MAIL_PASSWORD',column_receiver='receiver',column_subject='subject',column_message='message',column_attachment='attachment',test_mode=True,default_add='hanshooyberghs@gmail.com'):
-    ## Send emails
-    ## dataframe_in: dataframe with following columns:
-    ## - sender: e-mail of sender (formatted as Naam < naam@gmail.com>)
-    ## - receiver: e-mail of receiver (formatted as joske@gmail.com,jantje@gmail.com)
-    ## - subject: subject of the e-mail
-    ## - message: message of the e-mail
-    ## smtp_server: smtp server
-    ## smtp_port: smtp port
-    ## pwd_env_variable: environment variable with password
+def send_emails(dataframe_in, smtp_server='mail.tafeltennisantwerpen.be', sender_email='Secretariaat PCA <secretariaat@tafeltennisantwerpen.be>', smtp_port=587, pwd_env_variable='MAIL_PASSWORD', column_receiver='receiver', column_subject='subject', column_message='message', column_attachment='attachment', test_mode=True, default_add='hanshooyberghs@gmail.com'):
+    """Verstuur e-mails op basis van een DataFrame met berichtinformatie.
+
+    In testmodus worden alle e-mails naar één vast testadres gestuurd en
+    beperkt tot de eerste 5 rijen.  Buiten testmodus worden alle adressen
+    gebruikt en wordt het standaard CC-adres toegevoegd aan elk bericht.
+    De gebruiker wordt altijd om bevestiging gevraagd voor verzending.
+
+    Args:
+        dataframe_in (pandas.DataFrame): DataFrame met per rij één e-mail.
+            Vereiste kolommen (namen aanpasbaar via parameters):
+            ``receiver``, ``subject``, ``message``.  Optioneel:
+            ``attachment`` (kommagescheiden bestandspaden).
+        smtp_server (str, optional): SMTP-serveradres.
+            Standaard ``'mail.tafeltennisantwerpen.be'``.
+        sender_email (str, optional): Afzenderadres in het formaat
+            ``'Naam <adres@domein.be>'``.
+        smtp_port (int, optional): SMTP-poort (gebruikt STARTTLS).
+            Standaard ``587``.
+        pwd_env_variable (str, optional): Naam van de omgevingsvariabele
+            met het SMTP-wachtwoord.  Standaard ``'MAIL_PASSWORD'``.
+        column_receiver (str, optional): Kolomnaam voor ontvanger(s).
+            Standaard ``'receiver'``.
+        column_subject (str, optional): Kolomnaam voor onderwerp.
+            Standaard ``'subject'``.
+        column_message (str, optional): Kolomnaam voor berichttekst.
+            Standaard ``'message'``.
+        column_attachment (str, optional): Kolomnaam voor bijlagen.
+            Standaard ``'attachment'``.
+        test_mode (bool, optional): Indien ``True`` worden mails enkel naar
+            het testadres gestuurd.  Standaard ``True``.
+        default_add (str, optional): Extra CC-adres dat in productiemodus aan
+            elk bericht wordt toegevoegd.
+            Standaard ``'hanshooyberghs@gmail.com'``.
+
+    Raises:
+        SystemExit: Als de gebruiker de verzending niet bevestigt.
+    """
 
 
     print('\n Start mailing. ')

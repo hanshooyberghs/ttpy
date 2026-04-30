@@ -1,3 +1,21 @@
+"""
+tournamentroutines.py
+---------------------
+Routines voor het ophalen, verwerken en doorsturen van tornooi-inschrijvingen
+via de VTTL SOAP-API (zeep).
+
+Functies:
+    GetTournamentEntries()    – Haal inschrijvingen op voor een lijst tornooien.
+    AddFines()                – Voeg boetes (niet-deelname) toe aan de inschrijvingslijst.
+    PrintTotals()             – Druk totalen af en sla detail op als Excel.
+    TournamentsSaveAndMail()  – Sla Excel- en Word-facturen op en verstuur e-mails.
+    Inschrijving()            – Schrijf een speler in via lidnummer.
+    InschrijvingNaam()        – Schrijf een speler in via naam.
+
+Vereiste omgevingsvariabelen:
+    ACCOUNT_TT   – VTTL API-accountnaam.
+    PASWOORD_TT  – VTTL API-wachtwoord.
+"""
 ##############
 import sys
 import os
@@ -14,19 +32,42 @@ WSDL = 'http://api.vttl.be/0.7/?wsdl'
 
 
 def _create_client():
-    client = zeep.Client(wsdl=WSDL)
+    """Maak een zeep SOAP-client aan en haal de tornooidatalijst op.
+
+    Returns:
+        tuple[zeep.Client, dict]: De SOAP-client en een geserialiseerd
+        woordenboek met alle tornooigegevens.
+    """
     tournaments = client.service.GetTournaments()
     input_dict = helpers.serialize_object(tournaments)
     return client, input_dict
 
 
 def _get_credentials():
-    account = os.getenv('ACCOUNT_TT') or input("Environmental variable ACCOUNT_TT not set. Please enter manually: ")
+    """Haal VTTL API-inloggegevens op uit omgevingsvariabelen of gebruikersinvoer.
+
+    Returns:
+        tuple[str, str]: Account en wachtwoord voor de VTTL API.
+    """
     paswoord = os.getenv('PASWOORD_TT') or input("Environmental variable PASWOORD_TT not set. Please enter manually: ")
     return account, paswoord
 
 
 def _lookup_tournament_indices(input_dict, tornooi, reeks):
+    """Zoek de unieke indices op van een tornooi en een reeks.
+
+    Args:
+        input_dict (dict): Geserialiseerde tornooilijst afkomstig van de VTTL API.
+        tornooi (str): Naam van het tornooi (hoofdletterongevoelig).
+        reeks (str): Naam van de reeks binnen het tornooi (hoofdletterongevoelig).
+
+    Returns:
+        tuple[int, int]: ``(tornooi_index, reeks_index)`` als unieke API-indices.
+
+    Raises:
+        SystemExit: Als ``reeks`` niet opgegeven is, of als het tornooi of de
+            reeks niet gevonden wordt in de API-data.
+    """
     if reeks is None:
         print('Reeks moet opgegeven worden')
         sys.exit()
@@ -39,13 +80,35 @@ def _lookup_tournament_indices(input_dict, tornooi, reeks):
     print(tornooi, reeks)
     sys.exit()
 
-def GetTournamentEntries(tornooien,inschrijvingsgeld,file_dubbels='Dubbels.xlsx',provincie='A',dubbels_gebruiken=False):
-    # Get a list of tournaments
-    # input:
-    #   tornooien: lijst van tornooien (zoals in competitiesite)
-    #   inschrijvingsgeld: inschrijvingsgeld
-    #   provincie: selectie op provincie  (default: Antwerpen)
-    
+def GetTournamentEntries(tornooien, inschrijvingsgeld, file_dubbels='Dubbels.xlsx', provincie='A', dubbels_gebruiken=False):
+    """Haal inschrijvingen op voor een lijst tornooien via de VTTL API.
+
+    Vraagt per tornooi de registraties op, filtert op provincie en sluit
+    dubbel/mixed/menu-reeksen standaard uit (tenzij ``dubbels_gebruiken=True``).
+    De A-reeksen Dames en Heren zijn gratis en worden buiten de betalingslijst
+    gehouden.  Optioneel worden handmatig ingegeven dubbels uit een Excel-bestand
+    samengevoegd.
+
+    Args:
+        tornooien (list[str]): Lijst van tornooinamen zoals ze in de VTTL API
+            voorkomen.
+        inschrijvingsgeld (int | dict): Inschrijvingsgeld per tornooi.  Geef een
+            enkel getal voor een vast bedrag, of een woordenboek
+            ``{tornooinaam: bedrag}`` voor variabele bedragen.
+        file_dubbels (str, optional): Pad naar een Excel-bestand met handmatig
+            ingegeven dubbels.  Standaard ``'Dubbels.xlsx'``.
+        provincie (str, optional): Provinciefilter op basis van het eerste teken
+            van de clubcode.  Standaard ``'A'`` (Antwerpen).
+        dubbels_gebruiken (bool, optional): Indien ``True`` worden ook
+            dubbel/mixed-reeksen opgenomen.  Standaard ``False``.
+
+    Returns:
+        tuple[pandas.DataFrame, pandas.DataFrame]:
+            - ``final``: Geaggregeerd DataFrame per speler met totale
+              inschrijvingsgelden en een kommalijst van tornooien.
+            - ``all_registrations``: Gedetailleerd DataFrame met één rij per
+              inschrijving (voor rapportage en totalen).
+    """
     # client aanmaken
     wsdl='http://api.vttl.be/0.7/?wsdl'
     client = zeep.Client(wsdl=wsdl)
@@ -134,12 +197,28 @@ def GetTournamentEntries(tornooien,inschrijvingsgeld,file_dubbels='Dubbels.xlsx'
     
     return final,all_registrations
 
-def AddFines(final,file_boetes,tag_lidnummer='Lidnummer',tag_supplement='Supplement'):
-    # add fines (non participation), merging on Naam + Voornaam
-    #  input:
-    #   final: input dataframe with entries
-    #   boets: excel file with fines. Should contain columns Lidnummer, Supplement and Reden Supplement
-    
+def AddFines(final, file_boetes, tag_lidnummer='Lidnummer', tag_supplement='Supplement'):
+    """Voeg boetes (niet-deelname) toe aan de inschrijvingslijst.
+
+    Laadt een Excel-boetelijst in en koppelt deze op lidnummer aan het
+    inschrijvings-DataFrame.  Boetes voor spelers die niet ingeschreven zijn,
+    worden als extra rijen toegevoegd.  Een kolom ``'Totaal'`` wordt berekend
+    als de som van inschrijvingsgeld en supplement.
+
+    Args:
+        final (pandas.DataFrame): Inschrijvings-DataFrame zoals geretourneerd
+            door ``GetTournamentEntries()``.
+        file_boetes (str): Pad naar het Excel-bestand met boetes.  Verwachte
+            kolommen: ``Lidnummer``, ``Supplement``, ``Reden Supplement``.
+        tag_lidnummer (str, optional): Kolomnaam voor het lidnummer.
+            Standaard ``'Lidnummer'``.
+        tag_supplement (str, optional): Kolomnaam voor het supplement/boete.
+            Standaard ``'Supplement'``.
+
+    Returns:
+        pandas.DataFrame: Het bijgewerkte DataFrame met kolommen
+        ``Supplement``, ``Reden Supplement`` en ``Totaal``.
+    """
     # load input
     boetes=pd.read_excel(file_boetes)
 
@@ -181,13 +260,23 @@ def AddFines(final,file_boetes,tag_lidnummer='Lidnummer',tag_supplement='Supplem
     
     return final
     
-def PrintTotals(final,all_registrations,uitvoer_detail_totaal,column_supplement='Supplement',column_reason_supplement='Reden Supplement'):
-    ## Print totalen ##
-    # input:
-    #   final: final dataframe from load routines
-    #   all_registrations: list with all registrations, not grouped, from load routines
-    #   uitvoer_detail_totaal: file in which to save the data
-    ###################
+def PrintTotals(final, all_registrations, uitvoer_detail_totaal, column_supplement='Supplement', column_reason_supplement='Reden Supplement'):
+    """Druk totaaloverzichten af en sla het gedetailleerde saldo op als Excel.
+
+    Toont via stdout de inschrijvingsgelden per tornooi en de supplementen per
+    reden.  Slaat vervolgens het volledige saldo-DataFrame op als Excel-bestand.
+
+    Args:
+        final (pandas.DataFrame): Geaggregeerd inschrijvings-DataFrame (output
+            van ``AddFines``).
+        all_registrations (pandas.DataFrame): Gedetailleerde inschrijvingslijst
+            (output van ``GetTournamentEntries``).
+        uitvoer_detail_totaal (str): Pad naar het te schrijven Excel-bestand.
+        column_supplement (str, optional): Kolomnaam voor het supplement.
+            Standaard ``'Supplement'``.
+        column_reason_supplement (str, optional): Kolomnaam voor de reden van
+            het supplement.  Standaard ``'Reden Supplement'``.
+    """
     
     print('\nTotalen')
     print(all_registrations.groupby('Tornooi').sum()['Inschrijvingsgeld'])
@@ -203,15 +292,51 @@ def PrintTotals(final,all_registrations,uitvoer_detail_totaal,column_supplement=
 
 
 
-def TournamentsSaveAndMail(final,clubs_direct,default_items,uitvoer_detail_club,uitvoer_detail_individueel,lege_factuur,tornooien,startnummer_factuur=0,formaat_factuur='A-2023/',column_supplement='Supplement',column_reason_supplement='Reden Supplement',functies=['secretaris','voorzitter','penningmeester'],send_mails=False,mail_test=True):
-    ## Make MailingLists and save data
-    # input:
-    #   final: final dataframe from load routines
-    #   clubs_direct: clubs with direct payment
-    #   default_items: default items to add to the word document
-    #   uitvoer_detail_individueel: savefile for individual data
-    #   uitvoer_detail_club: savefile for clubdata
-    ###################
+def TournamentsSaveAndMail(final, clubs_direct, default_items, uitvoer_detail_club, uitvoer_detail_individueel, lege_factuur, tornooien, startnummer_factuur=0, formaat_factuur='A-2023/', column_supplement='Supplement', column_reason_supplement='Reden Supplement', functies=['secretaris', 'voorzitter', 'penningmeester'], send_mails=False, mail_test=True):
+    """Sla tornooisaldi op als Excel en Word-facturen en verstuur e-mails.
+
+    Verwerkt twee groepen clubs afzonderlijk:
+
+    1. **Individuele spelers** (clubs die niet rechtstreeks betalen): per speler
+       wordt een e-mail samengesteld met het persoonlijke saldo.  De gegevens
+       worden opgeslagen in ``uitvoer_detail_individueel``.
+
+    2. **Directe club-afrekening**: voor clubs in ``clubs_direct`` worden een
+       gezamenlijk Excel-bestand (``uitvoer_detail_club``) en een Word-factuur
+       per club aangemaakt.  Bij ``send_mails=True`` worden factuur + Excel als
+       bijlage gemaild.
+
+    Args:
+        final (pandas.DataFrame): Geaggregeerd inschrijvings-DataFrame inclusief
+            kolommen ``Totaal``, ``Inschrijvingsgeld``, ``Supplement``.
+        clubs_direct (list[str]): Lijst van clubcodes die rechtstreeks per club
+            betalen.
+        default_items (dict): Woordenboek met tekstsjablonen en vervangwaarden
+            voor de Word-factuur en e-mailberichten.  Verwachte sleutels:
+            ``'Mailindividueel'``, ``'MailClubs'``, en vervangingssleutels als
+            ``'DATUM'``, ``'REKENING'``, etc.
+        uitvoer_detail_club (str): Pad naar het Excel-bestand voor de
+            club-afrekening.
+        uitvoer_detail_individueel (str): Pad naar het Excel-bestand voor de
+            individuele afrekening.
+        lege_factuur (str): Pad naar het lege Word-sjabloon voor de factuur.
+        tornooien (list[str]): Lijst van tornooinamen (voor vermelding in de
+            factuur).
+        startnummer_factuur (int, optional): Startnummer voor factuurnummering.
+            Standaard ``0``.
+        formaat_factuur (str, optional): Prefix voor het factuurnummer.
+            Standaard ``'A-2023/'``.
+        column_supplement (str, optional): Kolomnaam voor supplementen.
+            Standaard ``'Supplement'``.
+        column_reason_supplement (str, optional): Kolomnaam voor de reden van
+            het supplement.  Standaard ``'Reden Supplement'``.
+        functies (list[str], optional): Clubfuncties voor mailadressen.
+            Standaard ``['secretaris', 'voorzitter', 'penningmeester']``.
+        send_mails (bool, optional): Indien ``True`` worden e-mails verstuurd.
+            Standaard ``False``.
+        mail_test (bool, optional): Indien ``True`` worden mails in testmodus
+            verzonden (zie ``send_emails``).  Standaard ``True``.
+    """
     
     
     # selectie clubs die niet rechtsteeks betalen
@@ -311,13 +436,28 @@ def TournamentsSaveAndMail(final,clubs_direct,default_items,uitvoer_detail_club,
 
 
 def Inschrijving(lidnummer, tornooi, reeks=None, mail=True, dubbel=False, unregister=False, check=False):
-    # Inschrijven voor tornooi
-    # input:
-    #   lidnummer: lidnummer (of lijst van lidnummers bij dubbel)
-    #   tornooi: tornooi
-    #   reeks: reeks
-    #   mail: send mail or not
-    #   dubbel: gaat het om een dubbel of niet
+    """Schrijf een speler in voor een tornooi via de VTTL API (op basis van lidnummer).
+
+    Args:
+        lidnummer (int | list[int]): Lidnummer van de speler.  Bij een dubbel
+            een lijst van twee lidnummers.
+        tornooi (str): Naam van het tornooi zoals vermeld in de VTTL API.
+        reeks (str, optional): Naam van de reeks.  Verplicht; het script stopt
+            als dit niet opgegeven is.
+        mail (bool, optional): Indien ``True`` ontvangt de speler een
+            bevestigingsmail van de VTTL API.  Standaard ``True``.
+        dubbel (bool, optional): Indien ``True`` wordt een dubbelinschrijving
+            gedaan; ``lidnummer`` moet dan een lijst zijn.  Standaard ``False``.
+        unregister (bool, optional): Indien ``True`` wordt de inschrijving
+            ongedaan gemaakt.  Standaard ``False``.
+        check (bool, optional): Indien ``True`` wordt de API-aanroep
+            overgeslagen (droge run).  Standaard ``False``.
+
+    Raises:
+        ValueError: Als ``dubbel=True`` maar ``lidnummer`` geen lijst is, of
+            omgekeerd.
+        zeep.exceptions.Fault: Bij een API-fout van de VTTL-server.
+    """
 
     export, clubs = mailroutines.getExport()
     if isinstance(lidnummer, int):
@@ -351,13 +491,30 @@ def Inschrijving(lidnummer, tornooi, reeks=None, mail=True, dubbel=False, unregi
 
 
 def InschrijvingNaam(naam, tornooi, reeks=None, mail=True, dubbel=False, unregister=False, check=False):
-    # Inschrijven voor tornooi op basis van naam
-    # input:
-    #   naam: naam (of lijst van namen bij dubbel)
-    #   tornooi: tornooi
-    #   reeks: reeks
-    #   mail: send mail or not
-    #   dubbel: gaat het om een dubbel of niet
+    """Schrijf een speler in voor een tornooi via de VTTL API (op basis van naam).
+
+    Zoekt het lidnummer op via de VTTL-ledenexport en delegeert vervolgens
+    naar de SOAP-API.
+
+    Args:
+        naam (str | list[str]): Volledige naam (achternaam voornaam) van de
+            speler.  Bij een dubbel een lijst van twee namen.
+        tornooi (str): Naam van het tornooi zoals vermeld in de VTTL API.
+        reeks (str, optional): Naam van de reeks.  Verplicht.
+        mail (bool, optional): Indien ``True`` ontvangt de speler een
+            bevestigingsmail.  Standaard ``True``.
+        dubbel (bool, optional): Indien ``True`` wordt een dubbelinschrijving
+            gedaan; ``naam`` moet dan een lijst zijn.  Standaard ``False``.
+        unregister (bool, optional): Indien ``True`` wordt de inschrijving
+            ongedaan gemaakt.  Standaard ``False``.
+        check (bool, optional): Indien ``True`` wordt de API-aanroep
+            overgeslagen (droge run).  Standaard ``False``.
+
+    Raises:
+        ValueError: Als ``dubbel=True`` maar ``naam`` geen lijst is, of
+            omgekeerd.
+        zeep.exceptions.Fault: Bij een API-fout van de VTTL-server.
+    """
 
     export, clubs = mailroutines.getExport()
     if isinstance(naam, list):

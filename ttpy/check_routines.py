@@ -1,8 +1,27 @@
+"""
+check_routines.py
+-----------------
+Kwaliteitscontroles op de VTTL-ledendata voor Provincie Antwerpen.
+
+Voert drie categorieën controles uit:
+    - Statuten: leden zonder statuut, jeugdspelers met verkeerd statuut,
+      recreanten met te hoog klassement, secretarissen/voorzitters zonder
+      competitief-lid-statuut.
+    - Geboortedatum: leden met een geboortedatum die te recent is.
+    - Dames op herensterktelijst: clubs met meer dan 8 dames op de herenlijst.
+
+Gebruik ``checkall()`` om alle controles in één keer uit te voeren.
+"""
 import pandas as pd
 
 
 def loadData():
-    from ttpy.mailroutines import getExport
+    """Laad de VTTL-ledenexport in als DataFrame.
+
+    Returns:
+        pandas.DataFrame: Volledig ledenbestand inclusief clubnamen, zoals
+        geretourneerd door ``getExport()``.
+    """
 
     leden=getExport()[0]
 
@@ -10,7 +29,11 @@ def loadData():
 
 
 def checkall():
-    checkStatuten()
+    """Voer alle beschikbare ledencontroles uit.
+
+    Roept achtereenvolgens ``checkStatuten()``, ``checkGeboortedatum()`` en
+    ``checkDamesOpHeren()`` aan en drukt de resultaten af via stdout.
+    """
     checkGeboortedatum()
     checkDamesOpHeren()
 
@@ -20,8 +43,19 @@ def checkall():
 
 
 def checkStatuten():
+    """Controleer de statuten van leden en rapporteer afwijkingen.
 
-    print('\n\n')
+    Vier deelcontroles:
+        1. Leden zonder statuut (per club).
+        2. Jeugdspelers (Kadet t/m Preminiem) met een ander statuut dan
+           ``'competitief lid'``.
+        3. Recreanten (``'recreant-reserve'``) met een klassement hoger dan
+           NG/D6/E0/E2/E4/E6.
+        4. Secretarissen en voorzitters met een ander statuut dan
+           ``'competitief lid'``.
+
+    Resultaten worden afgedrukt via stdout.
+    """
     print('--------------')
     print('Check statuten')
     print('--------------')
@@ -54,7 +88,13 @@ def checkStatuten():
 
 
 def checkGeboortedatum():
-    print('\n\n')
+    """Controleer of er leden zijn met een onwaarschijnlijk recente geboortedatum.
+
+    Markeert leden met een geboortedatum die minder dan drie jaar geleden is
+    (ten opzichte van het huidige kalenderjaar) als potentieel foutief.
+
+    Resultaten worden afgedrukt via stdout.
+    """
     print('--------------')
     print('Check leeftijd')
     print('--------------')
@@ -72,8 +112,14 @@ def checkGeboortedatum():
     print(data[pd.to_datetime(data.Gebooredatum)>start_check][['Naam','Voornaam','Club (0)','NaamClub','Gebooredatum','Actief Start Datum (0)']])
 
 def checkDamesOpHeren():
+    """Controleer welke clubs meer dan 8 dames op de herensterktelijst hebben.
 
-    print('\n\n')
+    Selecteert dames met statuut ``'competitief lid'`` of ``'recreant-reserve'``
+    die niet zijn uitgesloten van herenwedstrijden (``Geen Matchen Heren == 0``).
+    Clubs met meer dan 8 zulke speelsters worden gedetailleerd gerapporteerd.
+
+    Resultaten worden afgedrukt via stdout.
+    """
     print('--------------------')
     print('Check dames op heren')
     print('--------------------')

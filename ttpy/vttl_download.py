@@ -35,7 +35,15 @@ RECENT_WINDOW   = 1800   # accept emails up to 30 min old before triggering
 
 
 def _get_passwords():
-    vttl_pwd = os.getenv("PASWOORD_TT")
+    """Haal VTTL- en IMAP-wachtwoorden op uit omgevingsvariabelen of interactieve invoer.
+
+    Gebruikt ``PASWOORD_TT`` voor het VTTL-webportaal en ``MAIL_PASSWORD`` voor
+    de IMAP-mailbox.  Als ``MAIL_PASSWORD`` niet ingesteld is, valt de functie
+    terug op ``PASWOORD_TT`` (wanneer beide hetzelfde zijn).
+
+    Returns:
+        tuple[str, str]: ``(vttl_wachtwoord, imap_wachtwoord)``.
+    """
     mail_pwd = os.getenv("MAIL_PASSWORD") or vttl_pwd
     if not vttl_pwd:
         import getpass
@@ -47,7 +55,21 @@ def _get_passwords():
 
 
 def _trigger_report(vttl_pwd: str) -> datetime.datetime:
-    s = requests.Session()
+    """Log in op leden.vttl.be en trigger het ledenlijst-rapport.
+
+    Voert een HTTP-sessie uit: login, navigeer naar de rapportenpagina en
+    dien het LedenLijst-rapport in voor provincie Antwerpen (alleen actieve leden).
+
+    Args:
+        vttl_pwd (str): Wachtwoord voor leden.vttl.be.
+
+    Returns:
+        datetime.datetime: UTC-tijdstip waarop het rapport getriggerd werd
+        (gebruikt als tijdsanker voor het opwachten van de e-mail).
+
+    Raises:
+        SystemExit: Als de login mislukt.
+    """
     s.headers["User-Agent"] = "Mozilla/5.0"
 
     r1 = s.get(f"{VTTL_BASE_URL}/login.jspa?dispatch=view")
@@ -117,7 +139,26 @@ def _search_imap(mail_pwd: str, not_before: float) -> dict:
 
 
 def _fetch_from_imap(mail_pwd: str, triggered_at: datetime.datetime) -> dict:
-    deadline = time.time() + WAIT_SECONDS
+    """Wacht op de export-e-mail en retourneer de CSV-bijlagen.
+
+    Pollt de IMAP-mailbox tot een e-mail van ``VTTL_MAIL_FROM`` met onderwerp
+    ``VTTL_MAIL_SUBJ`` en CSV-bijlagen arriveert, of tot de wachttijd
+    (``WAIT_SECONDS``) verstreken is.
+
+    Args:
+        mail_pwd (str): Wachtwoord voor de IMAP-mailbox.
+        triggered_at (datetime.datetime): UTC-tijdstip van het triggeren van het
+            rapport.  E-mails die ouder zijn dan ``RECENT_WINDOW`` seconden voor
+            dit tijdstip worden genegeerd.
+
+    Returns:
+        dict[str, bytes]: Woordenboek ``{bestandsnaam: bestandsinhoud}`` met de
+        CSV-bijlagen uit de e-mail.
+
+    Raises:
+        SystemExit: Als er na ``WAIT_SECONDS`` seconden geen geldige e-mail is
+            ontvangen.
+    """
     # Accept emails that arrived up to RECENT_WINDOW seconds before trigger
     not_before = triggered_at.timestamp() - RECENT_WINDOW
     print(f"⏳ Wachten op email van {VTTL_MAIL_FROM} (max {WAIT_SECONDS}s) …")
@@ -143,6 +184,16 @@ def _fetch_from_imap(mail_pwd: str, triggered_at: datetime.datetime) -> dict:
 
 
 def _compare_persons(old_path: str, new_bytes: bytes) -> None:
+    """Vergelijk de nieuwe ledenexport met de vorige versie en rapporteer wijzigingen.
+
+    Toont via stdout welke lidnummers nieuw zijn (🟢) of verwijderd zijn (🔴)
+    ten opzichte van de opgeslagen export.  Bij een fout bij het inlezen van een
+    van de bestanden wordt de vergelijking overgeslagen.
+
+    Args:
+        old_path (str): Pad naar het vorige CSV-exportbestand.
+        new_bytes (bytes): Inhoud van het nieuwe CSV-exportbestand.
+    """
     try:
         old = pd.read_csv(old_path, sep=";", encoding="unicode_escape",
                           dtype=str, low_memory=False)
@@ -184,7 +235,21 @@ def _compare_persons(old_path: str, new_bytes: bytes) -> None:
 
 
 def run():
-    export_dir = os.getenv("EXPORT_TT")
+    """Voer de volledige download-workflow uit voor de VTTL-ledenexport.
+
+    Stappen:
+        1. Bepaal de opslaglocatie op basis van omgevingsvariabele ``EXPORT_TT``.
+        2. Haal wachtwoorden op (omgevingsvariabelen of interactieve invoer).
+        3. Log in op leden.vttl.be en trigger het LedenLijst-rapport.
+        4. Wacht op de export-e-mail en download de CSV-bijlagen.
+        5. Vergelijk de nieuwe export met de vorige versie (indien aanwezig).
+        6. Schrijf ``exportPerson.csv`` (en eventueel ``exportClub.csv``) weg.
+
+    Raises:
+        SystemExit: Als ``EXPORT_TT`` niet ingesteld is, de login mislukt,
+            er geen e-mail ontvangen wordt, of ``exportPerson.csv`` ontbreekt
+            in de bijlagen.
+    """
     if not export_dir:
         sys.exit("✗ Omgevingsvariabele EXPORT_TT is niet ingesteld.")
 

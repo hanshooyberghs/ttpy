@@ -32,7 +32,16 @@ def _parse_list(value):
 
 
 def run():
-    parser = argparse.ArgumentParser(description='Haal mailing op van tornooi-inschrijvingen.')
+    """Lees de config, haal tornooi-inschrijvingen op en druk de mailinglijst af.
+
+    Laadt het TOML-configuratiebestand (standaard ``mails_tornooi.toml``),
+    haalt de registraties op via ``GetTournamentEntries()`` en drukt een
+    kommagescheiden mailinglijst af op basis van de ingeschreven spelers.
+
+    Command-line argumenten:
+        --config (str): Pad naar het TOML-configuratiebestand.
+            Standaard ``'mails_tornooi.toml'``.
+    """
     parser.add_argument('--config', default='mails_tornooi.toml',
                         help='Pad naar config bestand (default: mails_tornooi.toml)')
     args = parser.parse_args()

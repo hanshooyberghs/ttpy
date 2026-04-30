@@ -25,7 +25,22 @@ import ttpy.tournamentroutines as tr
 
 
 def run():
-    parser = argparse.ArgumentParser(description='Schrijf spelers in voor een tornooi.')
+    """Lees de config en schrijf spelers in voor het opgegeven tornooi.
+
+    Laadt het TOML-configuratiebestand (standaard
+    ``inschrijving_tornooi.toml``), itereert over de inschrijvingen en roept
+    ``InschrijvingNaam()`` aan per speler of dubbelpaar.
+
+    Voor elk inschrijvings-item in de config:
+        - Een enkelvoudige naam of kommalijst van namen wordt per speler
+          afzonderlijk ingeschreven (``dubbel=False``).
+        - Een lijst van twee namen met ``dubbel=true`` wordt als dubbelpaar
+          ingeschreven.
+
+    Command-line argumenten:
+        --config (str): Pad naar het TOML-configuratiebestand.
+            Standaard ``'inschrijving_tornooi.toml'``.
+    """
     parser.add_argument('--config', default='inschrijving_tornooi.toml',
                         help='Pad naar config bestand (default: inschrijving_tornooi.toml)')
     args = parser.parse_args()
