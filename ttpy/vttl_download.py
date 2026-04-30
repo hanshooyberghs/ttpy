@@ -7,22 +7,15 @@ CSV-bijlagen, slaat ze op en vergelijkt met de vorige export.
 
 import os
 import sys
+import io
 import re
 import time
 import imaplib
 import email
 import datetime
 import shutil
-
-try:
-    import requests
-except ImportError:
-    sys.exit("Installeer requests:  pip install requests")
-
-try:
-    import pandas as pd
-except ImportError:
-    sys.exit("Installeer pandas:  pip install pandas")
+import requests
+import pandas as pd
 
 # ── Configuratie ──────────────────────────────────────────────────────────────
 VTTL_BASE_URL   = "https://leden.vttl.be"
@@ -154,7 +147,7 @@ def _compare_persons(old_path: str, new_bytes: bytes) -> None:
         old = pd.read_csv(old_path, sep=";", encoding="unicode_escape",
                           dtype=str, low_memory=False)
         new = pd.read_csv(
-            __import__("io").BytesIO(new_bytes),
+            io.BytesIO(new_bytes),
             sep=";", encoding="latin-1", dtype=str, low_memory=False,
         )
     except Exception as e:

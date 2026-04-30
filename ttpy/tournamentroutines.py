@@ -1,13 +1,43 @@
 ##############
+import sys
+import os
 import zeep
 from zeep import helpers
 from zeep.wsse.username import UsernameToken
 import pandas as pd
 from ttpy import mailroutines
-from ttpy.generalroutines import Replace,AddTable,SaveExcel
+from ttpy.generalroutines import Replace, AddTable, SaveExcel
 from docx import Document
-import os
 
+
+WSDL = 'http://api.vttl.be/0.7/?wsdl'
+
+
+def _create_client():
+    client = zeep.Client(wsdl=WSDL)
+    tournaments = client.service.GetTournaments()
+    input_dict = helpers.serialize_object(tournaments)
+    return client, input_dict
+
+
+def _get_credentials():
+    account = os.getenv('ACCOUNT_TT') or input("Environmental variable ACCOUNT_TT not set. Please enter manually: ")
+    paswoord = os.getenv('PASWOORD_TT') or input("Environmental variable PASWOORD_TT not set. Please enter manually: ")
+    return account, paswoord
+
+
+def _lookup_tournament_indices(input_dict, tornooi, reeks):
+    if reeks is None:
+        print('Reeks moet opgegeven worden')
+        sys.exit()
+    for item in input_dict['TournamentEntries']:
+        if item['Name'].lower() == tornooi.lower():
+            for item2 in item['SerieEntries']:
+                if item2['Name'].lower() == reeks.lower():
+                    return item['UniqueIndex'], item2['UniqueIndex']
+    print('Tornooi of reeks niet gevonden, controleer input')
+    print(tornooi, reeks)
+    sys.exit()
 
 def GetTournamentEntries(tornooien,inschrijvingsgeld,file_dubbels='Dubbels.xlsx',provincie='A',dubbels_gebruiken=False):
     # Get a list of tournaments
@@ -100,7 +130,6 @@ def GetTournamentEntries(tornooien,inschrijvingsgeld,file_dubbels='Dubbels.xlsx'
     if final['Lidnummer'].duplicated().sum()>0:
         print('Duplicated lidnummer, stopping')
         print(final[final['Lidnummer'].duplicated()])
-        import sys
         sys.exit()
     
     return final,all_registrations
@@ -280,156 +309,82 @@ def TournamentsSaveAndMail(final,clubs_direct,default_items,uitvoer_detail_club,
         club_details['attachment']=[docs[w]+','+docs[w].replace('docx','xlsx') for w in club_details.index]
         mailroutines.send_emails(club_details,smtp_server='mail.tafeltennisantwerpen.be',smtp_port=587,test_mode=mail_test)
 
-def Inschrijving(lidnummer,tornooi,reeks=None,mail=True,dubbel=False,unregister=False,check=False):
+
+def Inschrijving(lidnummer, tornooi, reeks=None, mail=True, dubbel=False, unregister=False, check=False):
     # Inschrijven voor tornooi
     # input:
     #   lidnummer: lidnummer (of lijst van lidnummers bij dubbel)
     #   tornooi: tornooi
-    #   reeks: reeks (optioneel, indien niet gegeven: automatisch bepaald)
+    #   reeks: reeks
     #   mail: send mail or not
     #   dubbel: gaat het om een dubbel of niet
-    ###################
 
-    # laad leden
-    export,clubs=mailroutines.getExport()
+    export, clubs = mailroutines.getExport()
     if isinstance(lidnummer, int):
-        persoon=str(export[export['Lidnummer']==lidnummer]['Naam'].iloc[0])
+        persoon = str(export[export['Lidnummer'] == lidnummer]['Naam'].iloc[0])
     else:
-        persoon=','.join(list(export[export['Lidnummer'].isin(lidnummer)]['Naam']))
+        persoon = ','.join(list(export[export['Lidnummer'].isin(lidnummer)]['Naam']))
 
-    
-    # client aanmaken
-    wsdl='http://api.vttl.be/0.7/?wsdl'
-    client = zeep.Client(wsdl=wsdl)
-    # tornooien inladen
-    tournaments=client.service.GetTournaments()
-    input_dict = helpers.serialize_object(tournaments)
+    client, input_dict = _create_client()
+    account, paswoord = _get_credentials()
+    index_tornooi, index_reeks = _lookup_tournament_indices(input_dict, tornooi, reeks)
 
-    # lees paswoord van environmental variables
-    if os.getenv('ACCOUNT_TT'):
-        account = os.getenv('ACCOUNT_TT')
-    else:
-        account = str(input(f"Environmental variable linking to account not set. Please enter the location manually."))
-    if os.getenv('PASWOORD_TT'):
-        paswoord = os.getenv('PASWOORD_TT')
-    else:
-        paswoord = str(input(f"Environmental variable linking to password not set. Please enter the location manually."))
-
-    # achterhaal codes
-    for item in input_dict['TournamentEntries']:
-        if item['Name'].lower()==tornooi.lower():
-            for item2 in item['SerieEntries']:
-                if item2['Name'].lower()==reeks.lower():
-                    index_tornooi=item['UniqueIndex']
-                    index_reeks=item2['UniqueIndex']
-
-    # check whether index_tornooi exists
-    if 'index_tornooi' not in locals():
-        print('Tornooi of reeks niet gevonden, controleer input')
-        print(tornooi,reeks)
-        import sys
-        sys.exit()
-
-    # inschrijven   
     try:
         if dubbel:
-            # check whether lidnummer is array
             if isinstance(lidnummer, list):
                 if not check:
-                    response=client.service.TournamentRegister(TournamentUniqueIndex=index_tornooi,SerieUniqueIndex=index_reeks,PlayerUniqueIndex=lidnummer,Credentials={'Account':account,'Password':paswoord},NotifyPlayer=mail,Unregister=unregister)
+                    response = client.service.TournamentRegister(TournamentUniqueIndex=index_tornooi, SerieUniqueIndex=index_reeks, PlayerUniqueIndex=lidnummer, Credentials={'Account': account, 'Password': paswoord}, NotifyPlayer=mail, Unregister=unregister)
             else:
-                raise ValueError(f"Inschrijving dubbel: lidnummer is geen lijst")
-
+                raise ValueError("Inschrijving dubbel: lidnummer is geen lijst")
         else:
-            # check whether lidnummer is integer 
             if isinstance(lidnummer, int):
                 if not check:
-                    response=client.service.TournamentRegister(TournamentUniqueIndex=index_tornooi,SerieUniqueIndex=index_reeks,PlayerUniqueIndex=str(lidnummer),Credentials={'Account':account,'Password':paswoord},NotifyPlayer=mail,Unregister=unregister)
+                    response = client.service.TournamentRegister(TournamentUniqueIndex=index_tornooi, SerieUniqueIndex=index_reeks, PlayerUniqueIndex=str(lidnummer), Credentials={'Account': account, 'Password': paswoord}, NotifyPlayer=mail, Unregister=unregister)
             else:
-                raise ValueError(f"Inschrijving enkel: lijsten van lidnummers gegeven")
+                raise ValueError("Inschrijving enkel: lijsten van lidnummers gegeven")
 
-        print('Inschrijving voor ',persoon,' (',lidnummer,') in ',tornooi,' in reeks ',reeks,' is gelukt.')
+        print('Inschrijving voor ', persoon, ' (', lidnummer, ') in ', tornooi, ' in reeks ', reeks, ' is gelukt.')
     except ValueError as ve:
-        print(f"Caught an error: {ve}")               
+        print(f"Caught an error: {ve}")
     except zeep.exceptions.Fault as fault:
         print(f"Caught a zeep Fault: {fault}")
-  
 
-def InschrijvingNaam(naam,tornooi,reeks=None,mail=True,dubbel=False,unregister=False,check=False):
-    # Inschrijven voor tornooi
+
+def InschrijvingNaam(naam, tornooi, reeks=None, mail=True, dubbel=False, unregister=False, check=False):
+    # Inschrijven voor tornooi op basis van naam
     # input:
-    #   lidnummer: lidnummer (of lijst van lidnummers bij dubbel)
+    #   naam: naam (of lijst van namen bij dubbel)
     #   tornooi: tornooi
-    #   reeks: reeks (optioneel, indien niet gegeven: automatisch bepaald)
+    #   reeks: reeks
     #   mail: send mail or not
     #   dubbel: gaat het om een dubbel of niet
-    ###################
 
-    # laad leden
-    export,clubs=mailroutines.getExport()
-
-    # zoek lid
+    export, clubs = mailroutines.getExport()
     if isinstance(naam, list):
-        # dubbel
-        lidnummer=[export[export['naam_combi']==w.lower()]['Lidnummer'].iloc[0] for w in naam]
-        
+        lidnummer = [export[export['naam_combi'] == w.lower()]['Lidnummer'].iloc[0] for w in naam]
     else:
-        # enkel
-        lidnummer=export[export['naam_combi']==naam.lower()]['Lidnummer'].iloc[0]
+        lidnummer = export[export['naam_combi'] == naam.lower()]['Lidnummer'].iloc[0]
 
-    
-    # client aanmaken
-    wsdl='http://api.vttl.be/0.7/?wsdl'
-    client = zeep.Client(wsdl=wsdl)
-    # tornooien inladen
-    tournaments=client.service.GetTournaments()
-    input_dict = helpers.serialize_object(tournaments)
+    client, input_dict = _create_client()
+    account, paswoord = _get_credentials()
+    index_tornooi, index_reeks = _lookup_tournament_indices(input_dict, tornooi, reeks)
 
-    # lees paswoord van environmental variables
-    if os.getenv('ACCOUNT_TT'):
-        account = os.getenv('ACCOUNT_TT')
-    else:
-        account = str(input(f"Environmental variable linking to account not set. Please enter the location manually."))
-    if os.getenv('PASWOORD_TT'):
-        paswoord = os.getenv('PASWOORD_TT')
-    else:
-        paswoord = str(input(f"Environmental variable linking to password not set. Please enter the location manually."))
-
-    # achterhaal codes
-    for item in input_dict['TournamentEntries']:
-        if item['Name'].lower()==tornooi.lower():
-            for item2 in item['SerieEntries']:
-                if item2['Name'].lower()==reeks.lower():
-                    index_tornooi=item['UniqueIndex']
-                    index_reeks=item2['UniqueIndex']
-
-    # check whether index_tornooi exists
-    if 'index_tornooi' not in locals():
-        print('Tornooi of reeks niet gevonden, controleer input')
-        print(tornooi,reeks)
-        import sys
-        sys.exit()
-
-    # inschrijven   
     try:
         if dubbel:
-            # check whether lidnummer is array
             if isinstance(naam, list):
                 if not check:
-                    response=client.service.TournamentRegister(TournamentUniqueIndex=index_tornooi,SerieUniqueIndex=index_reeks,PlayerUniqueIndex=lidnummer,Credentials={'Account':account,'Password':paswoord},NotifyPlayer=mail,Unregister=unregister)
+                    response = client.service.TournamentRegister(TournamentUniqueIndex=index_tornooi, SerieUniqueIndex=index_reeks, PlayerUniqueIndex=lidnummer, Credentials={'Account': account, 'Password': paswoord}, NotifyPlayer=mail, Unregister=unregister)
             else:
-                raise ValueError(f"Inschrijving dubbel: lidnummer is geen lijst")
-
+                raise ValueError("Inschrijving dubbel: naam is geen lijst")
         else:
-            # check whether naam is string 
             if isinstance(naam, str):
                 if not check:
-                    response=client.service.TournamentRegister(TournamentUniqueIndex=index_tornooi,SerieUniqueIndex=index_reeks,PlayerUniqueIndex=str(lidnummer),Credentials={'Account':account,'Password':paswoord},NotifyPlayer=mail,Unregister=unregister)
+                    response = client.service.TournamentRegister(TournamentUniqueIndex=index_tornooi, SerieUniqueIndex=index_reeks, PlayerUniqueIndex=str(lidnummer), Credentials={'Account': account, 'Password': paswoord}, NotifyPlayer=mail, Unregister=unregister)
             else:
-                raise ValueError(f"Inschrijving enkel: lijsten van lidnummers gegeven")
+                raise ValueError("Inschrijving enkel: lijsten van namen gegeven")
 
-        print('Inschrijving voor ',naam,' (',lidnummer,') in ',tornooi,' in reeks ',reeks,' is gelukt.')
+        print('Inschrijving voor ', naam, ' (', lidnummer, ') in ', tornooi, ' in reeks ', reeks, ' is gelukt.')
     except ValueError as ve:
-        print(f"Caught an error: {ve}")               
+        print(f"Caught an error: {ve}")
     except zeep.exceptions.Fault as fault:
         print(f"Caught a zeep Fault: {fault}")
