@@ -44,6 +44,7 @@ def strip_prefix(naam: str) -> str:
     Returns:
         str: Clubnaam in kleine letters zonder prefix en witruimte.
     """
+    naam = re.sub(r'^(k?ttc?k?|omni|geelse)\s+', '', naam.strip(), flags=re.IGNORECASE)
     return naam.lower().strip()
 
 
@@ -59,6 +60,7 @@ def run():
         --config (str): Pad naar het TOML-configuratiebestand.
             Standaard ``'mailing_clubs.toml'``.
     """
+    parser = argparse.ArgumentParser(description='Haal mailinglijst op basis van clubnamen.')
     parser.add_argument('--config', default='mailing_clubs.toml',
                         help='Pad naar config bestand (default: mailing_clubs.toml)')
     args = parser.parse_args()
