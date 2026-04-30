@@ -9,6 +9,11 @@ setup(
     entry_points={
         'console_scripts': [
             'ttpy_trigger_download=ttpy.vttl_download:run',
+            'ttpy_mailing_naam=ttpy.mailing_naam:run',
+            'ttpy_mailing_clubs=ttpy.mailing_clubs:run',
+            'ttpy_inschrijving_tornooi=ttpy.inschrijving_tornooi:run',
+            'ttpy_mails_tornooi=ttpy.mails_tornooi:run',
+            'ttpy_check=ttpy.check:run',
         ],
     },
 )
