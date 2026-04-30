@@ -302,7 +302,7 @@ def GetClubs(df):
     club_fun_columns = [col for col in df.columns if col.lower().startswith("club fun")]
 
     # Filter rows where at least one of the columns that start with "Club fun" is not empty
-    filtered_df = df.dropna(subset=club_fun_columns, how='all')
+    filtered_df = df.dropna(subset=club_fun_columns, how='all').copy()
 
     # Sort the DataFrame based on the "Club [0]" column, if available
     if "Club [0]" in df.columns:
