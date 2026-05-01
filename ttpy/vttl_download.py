@@ -44,6 +44,7 @@ def _get_passwords():
     Returns:
         tuple[str, str]: ``(vttl_wachtwoord, imap_wachtwoord)``.
     """
+    vttl_pwd = os.getenv("PASWOORD_TT")
     mail_pwd = os.getenv("MAIL_PASSWORD") or vttl_pwd
     if not vttl_pwd:
         import getpass
@@ -70,6 +71,7 @@ def _trigger_report(vttl_pwd: str) -> datetime.datetime:
     Raises:
         SystemExit: Als de login mislukt.
     """
+    s = requests.Session()
     s.headers["User-Agent"] = "Mozilla/5.0"
 
     r1 = s.get(f"{VTTL_BASE_URL}/login.jspa?dispatch=view")
@@ -90,12 +92,16 @@ def _trigger_report(vttl_pwd: str) -> datetime.datetime:
     try:
         s.post(
             f"{VTTL_BASE_URL}/report.jspa",
-            data={
-                "filterProvincie": "Antwerpen", "filterAansluitingsNrClub": "",
-                "filterActief": "true", "extraLabelText": "",
-                "startLabel": "1", "selectedLabel": "0",
-                "selectedReport": "LedenLijst",
-                "prepare.x": "50", "prepare.y": "10",
+            files={
+                "filterProvincie":       (None, "Antwerpen"),
+                "filterAansluitingsNrClub": (None, ""),
+                "filterActief":          (None, "true"),
+                "extraLabelText":        (None, ""),
+                "startLabel":            (None, "1"),
+                "selectedLabel":         (None, "0"),
+                "selectedReport":        (None, "Export"),
+                "prepare.x":             (None, "50"),
+                "prepare.y":             (None, "10"),
             },
             timeout=15,
         )
@@ -161,6 +167,7 @@ def _fetch_from_imap(mail_pwd: str, triggered_at: datetime.datetime) -> dict:
     """
     # Accept emails that arrived up to RECENT_WINDOW seconds before trigger
     not_before = triggered_at.timestamp() - RECENT_WINDOW
+    deadline = time.time() + WAIT_SECONDS
     print(f"⏳ Wachten op email van {VTTL_MAIL_FROM} (max {WAIT_SECONDS}s) …")
 
     while time.time() < deadline:
@@ -250,6 +257,7 @@ def run():
             er geen e-mail ontvangen wordt, of ``exportPerson.csv`` ontbreekt
             in de bijlagen.
     """
+    export_dir = os.getenv("EXPORT_TT")
     if not export_dir:
         sys.exit("✗ Omgevingsvariabele EXPORT_TT is niet ingesteld.")
 
