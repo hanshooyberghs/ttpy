@@ -10,15 +10,12 @@ Gebruik:
     ttpy_check
 """
 import ttpy.check_routines as tc
+import ttpy.vttl_download as vd
 
 
 def run():
-    """Voer alle ledencontroles uit via ``check_routines.checkall()``.
-
-    Roept ``checkall()`` aan, dat achtereenvolgens ``checkStatuten()``,
-    ``checkGeboortedatum()`` en ``checkDamesOpHeren()`` uitvoert en de
-    resultaten afdrukt via stdout.
-    """
+    """Trigger eerst de VTTL-ledenexport, voer daarna alle ledencontroles uit."""
+    vd.run()
     tc.checkall()
 
 
