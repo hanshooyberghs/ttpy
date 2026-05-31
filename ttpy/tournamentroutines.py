@@ -80,7 +80,7 @@ def _lookup_tournament_indices(input_dict, tornooi, reeks):
     print(tornooi, reeks)
     sys.exit()
 
-def GetTournamentEntries(tornooien, inschrijvingsgeld, file_dubbels='Dubbels.xlsx', provincie='A', dubbels_gebruiken=False):
+def GetTournamentEntries(tornooien, inschrijvingsgeld, file_dubbels='Dubbels.xlsx', provincie='A', dubbels_gebruiken=False, season=None):
     """Haal inschrijvingen op voor een lijst tornooien via de VTTL API.
 
     Vraagt per tornooi de registraties op, filtert op provincie en sluit
@@ -114,7 +114,7 @@ def GetTournamentEntries(tornooien, inschrijvingsgeld, file_dubbels='Dubbels.xls
     client = zeep.Client(wsdl=wsdl)
 
     # tornooien inladen
-    tournaments=client.service.GetTournaments()
+    tournaments=client.service.GetTournaments(Season=season)
     input_dict = helpers.serialize_object(tournaments)
 
 
@@ -124,7 +124,7 @@ def GetTournamentEntries(tornooien, inschrijvingsgeld, file_dubbels='Dubbels.xls
     for item in input_dict['TournamentEntries']:
         if item['Name'] in tornooien:
             print(item['Name'],' ',item['UniqueIndex'])
-            spelers_tornooi=client.service.GetTournaments(WithRegistrations=True,TournamentUniqueIndex=item['UniqueIndex'])
+            spelers_tornooi=client.service.GetTournaments(Season=season,WithRegistrations=True,TournamentUniqueIndex=item['UniqueIndex'])
             spelers_tornooi = helpers.serialize_object(spelers_tornooi)
             spelers=spelers_tornooi['TournamentEntries'][0]['SerieEntries']
             
