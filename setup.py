@@ -14,6 +14,7 @@ setup(
             'ttpy_inschrijving_tornooi=ttpy.inschrijving_tornooi:run',
             'ttpy_mails_tornooi=ttpy.mails_tornooi:run',
             'ttpy_check=ttpy.check:run',
+            'ttpy_afrekening_tornooien=ttpy.afrekening_tornooien:run',
         ],
     },
 )

@@ -1,0 +1,78 @@
+# afrekening_tornooien.toml
+# Configuratie voor: ttpy_afrekening_tornooien
+#
+# Alle tornooien worden automatisch opgezocht in de VTTL API (season).
+# Inschrijvingsgelden en dubbels worden gedownload via de VTTL competitiesite CSV.
+# Reeksen met prijs 0 in de CSV worden als gratis beschouwd en genegeerd.
+
+season       = 26
+send_mails   = false
+provincie    = "A"
+
+file_boetes    = "Forfaits.xlsx"
+lege_factuur   = "LegeFactuur.docx"
+folder_out     = "2025-2026/AfrekeningVoorjaar"
+
+formaat_factuur    = "A-2026/"
+startnummer_factuur = 2
+
+tornooien = [
+    "Provinciaal Kampioenschap Jeugd Antwerpen",
+    "Provinciaal Kampioenschap Klassementen Antwerpen",
+    "Provinciaal Criterium Veteranen Antwerpen - Fase 3",
+    "Provinciaal Criterium Jeugd Antwerpen - Fase 2",
+    "Provinciaal Criterium Veteranen Antwerpen - Fase 4",
+    "Vlaamse Kampioenschappen ABCDE",
+    "National Youth Criterium Phase 3",
+    "BK Jeugd - CB Jeunes PM-MIN",
+    "BK Jeugd - CB Jeunes CAD-JUN--19",
+    "BK A - CB A",
+    "BK A eindtabellen - CB A tableaux final",
+    "BK enkel - CB simple BCDE",
+    "BK Dubbel BCDE - CB Doubles BCDE",
+]
+
+clubs_direct = [
+    "A003", "A008", "A074", "A095", "A115", "A117", "A118", "A123", "A129", "A130",
+    "A135", "A136", "A139", "A141", "A147", "A182", "A186", "A211", "A212",
+]
+
+[mail]
+uitzenddatum = "2026/04/05"
+vervaldatum  = "2026/04/25"
+
+mail_individueel = """
+Beste tafeltennisser,
+
+Bij deze nodigen we je uit om de inschrijvingsgelden en boetes voor provinciale, Vlaamse en Belgische tornooien in de voorbije maanden te betalen. De betaling dient te gebeuren op het rekeningnummer BE71 0017 0026 1769 van het Provinciaal Comité Antwerpen, met vermelding van de naam van de betreffende speler, en dit voor 25 april 2026. Alvast hartelijk dank!
+
+Het verschuldigde bedrag voor SPELER bedraagt TOTAAL EUR, waarvan INSCHRIJVINGSGELDEN EUR aan inschrijvingsgelden (voor de volgende tornooien: TORNOOIEN), en BOETES EUR aan extra kosten (REDENBOETE).
+
+Bij vragen over de betalingsmodaliteiten kunnen jullie contact opnemen met de penningmeester van het PCA (penningmeester@tafeltennisantwerpen.be), en bij vragen over de lijst met deelnames en boetes kunnen jullie contact opnemen met het secretariaat (secretariaat@tafeltennisantwerpen.be).
+
+Vriendelijke groeten,
+
+Hans Hooyberghs
+Secretaris Provinciaal Comité Antwerpen
+secretariaat@tafeltennisantwerpen.be
+0498 / 04 63 03"""
+
+mail_clubs = """
+Beste penningmeester en secretaris,
+
+In bijlage vinden jullie een factuur met de inschrijvingsgelden, boetes en maaltijdkosten voor recente provinciale, Vlaamse en Belgische toernooien. Ze bevat tevens een Excel bestand met een overzicht van alle toernooien waaraan de betrokken spelers hebben deelgenomen, voor het geval jullie deze details nodig hebben om de bedragen eventueel terug te vorderen van de spelers.
+
+Wij verzoeken jullie vriendelijk om de factuur van jullie club zo spoedig mogelijk te betalen aan de provincie. Betaling kan gebeuren op het rekeningnummer BE71 0017 0026 1769 van het PCA, graag met vermelding van de naam van de club. De deadline voor betaling is 25 april 2026.
+
+Aangezien jullie hebben gekozen om het bedrag als club in zijn geheel te betalen, zijn de betrokken spelers NIET rechtstreeks geïnformeerd.
+
+Bij vragen over de betalingsmodaliteiten, kunnen jullie contact opnemen met de penningmeester van het PCA (penningmeester@tafeltennisantwerpen.be), en bij vragen over de lijst met deelnames en boetes kunnen jullie contact opnemen met het secretariaat (secretariaat@tafeltennisantwerpen.be).
+
+Alvast bedankt!
+
+Vriendelijke groeten,
+
+Hans Hooyberghs
+Secretaris Provinciaal Comité Antwerpen
+secretariaat@tafeltennisantwerpen.be
+0498 / 04 63 03"""

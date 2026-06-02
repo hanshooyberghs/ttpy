@@ -19,16 +19,197 @@ Vereiste omgevingsvariabelen:
 ##############
 import sys
 import os
+import csv
+import io
+import re
 import zeep
 from zeep import helpers
 from zeep.wsse.username import UsernameToken
 import pandas as pd
+import requests
 from ttpy import mailroutines
 from ttpy.generalroutines import Replace, AddTable, SaveExcel
 from docx import Document
 
 
 WSDL = 'http://api.vttl.be/0.7/?wsdl'
+COMPETITIE_BASE = 'https://competitie.vttl.be'
+
+
+def _vttl_competition_login():
+    """Login op competitie.vttl.be via SAML en retourneer een ingelogde requests.Session.
+
+    Gebruikt omgevingsvariabelen ``ACCOUNT_TT`` en ``PASWOORD_TT`` voor de
+    inloggegevens.  Voert de volledige SAML-flow uit en retourneert een sessie
+    waarmee beveiligde pagina's (o.a. CSV-exports) kunnen worden opgehaald.
+
+    Returns:
+        requests.Session: Ingelogde sessie voor competitie.vttl.be.
+
+    Raises:
+        SystemExit: Als het inloggen mislukt (geen SAMLResponse gevonden).
+    """
+    account = os.getenv('ACCOUNT_TT') or input("ACCOUNT_TT niet ingesteld. Voer account in: ")
+    paswoord = os.getenv('PASWOORD_TT') or input("PASWOORD_TT niet ingesteld. Voer wachtwoord in: ")
+
+    s = requests.Session()
+    s.headers['User-Agent'] = 'Mozilla/5.0'
+    s.cookies.set('readytohelp', 'ofcourse', domain='competitie.vttl.be')
+
+    # Stap 1: initieer SAML-flow via een willekeurige beveiligde pagina
+    target = f'{COMPETITIE_BASE}/'
+    login_url = (f'{COMPETITIE_BASE}/auth/module.php/core/as_login.php'
+                 f'?AuthId=tabt-sp&ReturnTo={requests.utils.quote(target)}')
+    r1 = s.get(login_url)
+
+    relay    = re.search(r'name="lmhidden_RelayState"[^>]*value="([^"]+)"', r1.text)
+    method   = re.search(r'name="lmhidden_Method"[^>]*value="([^"]+)"',     r1.text)
+    saml_req = re.search(r'name="lmhidden_SAMLRequest"[^>]*value="([^"]+)"', r1.text)
+
+    if not (relay and saml_req):
+        sys.exit('✗ SAML-login kon niet worden gestart op competitie.vttl.be.')
+
+    # Stap 2: POST inloggegevens naar auth.vttl.be
+    r2 = s.post(r1.url, data={
+        'lmhidden_RelayState':   relay.group(1),
+        'lmhidden_Method':       method.group(1) if method else '',
+        'lmhidden_SAMLRequest':  saml_req.group(1),
+        'url':      '',
+        'user':     account,
+        'password': paswoord,
+    })
+
+    saml_resp  = re.search(r'name="SAMLResponse"[^>]*value="([^"]+)"', r2.text)
+    relay_back = re.search(r'name="RelayState"[^>]*value="([^"]+)"',   r2.text)
+    form_act   = re.search(r'<form[^>]*action="([^"]+)"',              r2.text)
+
+    if not (saml_resp and form_act):
+        sys.exit('✗ SAML-authenticatie mislukt. Controleer ACCOUNT_TT en PASWOORD_TT.')
+
+    # Stap 3: POST SAMLResponse terug naar de service provider
+    s.post(form_act.group(1), data={
+        'SAMLResponse': saml_resp.group(1),
+        'RelayState':   relay_back.group(1) if relay_back else '',
+    })
+
+    print('✓ Ingelogd op competitie.vttl.be')
+    return s
+
+
+def _get_entries_from_csv(session, t_id, tornooi_naam, provincie='A'):
+    """Download en parseer alle inschrijvingen (enkels + dubbels + gemengd) uit de VTTL CSV-export.
+
+    Haalt de CSV op voor een specifiek tornooi via de VTTL competitiesite.
+    Prijs per reeks, reekstype en deelnemers worden rechtstreeks uit de CSV gelezen.
+    Naam en clubcode worden opgezocht via ``getExport()``.
+
+    Enkels krijgen ``tornooi_naam`` als Tornooi-label, dubbels krijgen
+    ``"{tornooi_naam} Dubbel"`` en gemengd ``"{tornooi_naam} Dubbel Gemengd"``.
+    Reeksen met prijs 0 die expliciet gratis zijn (bv. Dames A / Heren A bij VK)
+    worden overgeslagen; overige reeksen met prijs 0 resulteren in een fout.
+
+    Args:
+        session (requests.Session): Ingelogde sessie voor competitie.vttl.be.
+        t_id (int | str): Uniek tornooi-ID (``UniqueIndex`` uit de VTTL API).
+        tornooi_naam (str): Naam van het tornooi (voor de Tornooi-kolom).
+        provincie (str, optional): Eerste letter van de clubcode als filter.
+            Standaard ``'A'`` (Antwerpen).
+
+    Returns:
+        pandas.DataFrame: DataFrame met kolommen ``Lidnummer``, ``Naam``,
+        ``Voornaam``, ``Club``, ``Tornooi``, ``reeks``, ``Inschrijvingsgeld``.
+        Leeg DataFrame als het downloaden mislukt.
+    """
+    url = f'{COMPETITIE_BASE}/index.php?menu=7&export=3&format=csv&t_id={t_id}'
+    r = session.get(url)
+
+    if 'text/html' in r.headers.get('Content-Type', ''):
+        print(f'\t⚠ Geen toegang tot CSV voor tornooi {t_id} – overgeslagen.')
+        return pd.DataFrame()
+
+    lines = r.text.strip().split('\n')
+
+    # Lees serie-info uit R-regels; sla reeksen met prijs 0 over (bv. gratis A-reeksen)
+    # maar bewaar enkels zonder prijs (prijs wordt later ingevuld via inschrijvingsgeld)
+    series = {}
+    for line in lines:
+        if not line.startswith('R;'):
+            continue
+        row = next(csv.reader(io.StringIO(line), delimiter=';'))
+        sid, sname = row[1], row[2]
+        try:
+            price = int(row[4])
+        except (IndexError, ValueError):
+            price = 0
+        stype = next((f for f in row if f in ('single', 'double', 'mixed')), None)
+        if stype is None:
+            print(f'\t  (reeks genegeerd - geen type single/double/mixed: {sname})')
+            continue
+        # reeksen met prijs 0 zijn gratis en worden overgeslagen
+        if price == 0:
+            print(f'\t  (reeks genegeerd - gratis: {sname})')
+            continue
+        # menu-reeksen worden genegeerd
+        if 'menu' in sname.lower():
+            print(f'\t  (reeks genegeerd - menu: {sname})')
+            continue
+        print(f'\t  {stype:6s}  EUR {price:2d}  {sname}')
+        series[sid] = {'name': sname, 'type': stype, 'price': price}
+
+    # Lees lidnummers uit I-regels voor alle opgenomen reeksen.
+    # Enkels:        I;serie_id;lidnummer
+    # Dubbels/gemengd: I;serie_id;speler1;speler2
+    members_by_series = {}
+    for line in lines:
+        if not line.startswith('I;'):
+            continue
+        parts = line.rstrip(';').split(';')
+        sid = parts[1]
+        if sid not in series:
+            continue
+        mids = [p for p in parts[2:] if p.strip().isdigit()]
+        members_by_series.setdefault(sid, []).extend(int(m) for m in mids)
+
+    if not members_by_series:
+        return pd.DataFrame()
+
+    # Lookup naam en club via bestaande ledenexport
+    export, _ = mailroutines.getExport()
+    lookup = (export[['Lidnummer', 'Naam', 'Voornaam', 'Club (0)']]
+              .rename(columns={'Club (0)': 'Club'}))
+
+    rows = []
+    for sid, member_ids in members_by_series.items():
+        info = series[sid]
+        if info['type'] == 'mixed':
+            tornooi_label = f'{tornooi_naam} Dubbel Gemengd'
+        elif info['type'] == 'double':
+            tornooi_label = f'{tornooi_naam} Dubbel'
+        else:
+            tornooi_label = tornooi_naam
+        for mid in member_ids:
+            rows.append({
+                'Lidnummer':         mid,
+                'Tornooi':           tornooi_label,
+                'reeks':             f'{tornooi_naam} {info["name"]}',
+                'Inschrijvingsgeld': info['price'],
+            })
+
+    df = pd.DataFrame(rows)
+    df = df.merge(lookup, on='Lidnummer', how='left')
+
+    # Filter op provincie en verwijder onbekende clubs
+    df = df[df['Club'].fillna('').str[:1] == provincie]
+    df = df[df['Club'] != 'AFTT']
+
+    # Titel-case namen
+    df['Naam']     = df['Naam'].str.title().str.strip()
+    df['Voornaam'] = df['Voornaam'].str.title().str.strip()
+
+    n_enkels  = (df['Tornooi'] == tornooi_naam).sum()
+    n_dubbels = (df['Tornooi'] != tornooi_naam).sum()
+    print(f'\t CSV geladen: {n_enkels} enkels + {n_dubbels} dubbels/gemengd voor {tornooi_naam}')
+    return df[['Lidnummer', 'Naam', 'Voornaam', 'Club', 'Tornooi', 'reeks', 'Inschrijvingsgeld']]
 
 
 def _create_client():
@@ -80,27 +261,39 @@ def _lookup_tournament_indices(input_dict, tornooi, reeks):
     print(tornooi, reeks)
     sys.exit()
 
-def GetTournamentEntries(tornooien, inschrijvingsgeld, file_dubbels='Dubbels.xlsx', provincie='A', dubbels_gebruiken=False, season=None):
+def GetTournamentEntries(tornooien, inschrijvingsgeld=None, file_dubbels='Dubbels.xlsx',
+                         provincie='A', dubbels_gebruiken=False, season=None,
+                         csv_dubbels=False):
     """Haal inschrijvingen op voor een lijst tornooien via de VTTL API.
 
     Vraagt per tornooi de registraties op, filtert op provincie en sluit
-    dubbel/mixed/menu-reeksen standaard uit (tenzij ``dubbels_gebruiken=True``).
-    De A-reeksen Dames en Heren zijn gratis en worden buiten de betalingslijst
-    gehouden.  Optioneel worden handmatig ingegeven dubbels uit een Excel-bestand
-    samengevoegd.
+    dubbel/mixed/menu-reeksen standaard uit.  Dubbels kunnen op twee manieren
+    worden toegevoegd (niet exclusief):
+
+    * ``file_dubbels``: pad naar een handmatig bijgehouden Excel-bestand.
+    * ``csv_dubbels=True``: automatisch downloaden van de VTTL competitiesite
+      (vereist ``ACCOUNT_TT`` en ``PASWOORD_TT``).  De prijs per reeks wordt
+      rechtstreeks uit de CSV gelezen.  Naam en clubcode worden opgezocht via de
+      ledenexport (``EXPORT_TT``).  Als een reeks een prijs van 0 heeft stopt
+      het programma met een foutmelding.
 
     Args:
         tornooien (list[str]): Lijst van tornooinamen zoals ze in de VTTL API
             voorkomen.
-        inschrijvingsgeld (int | dict): Inschrijvingsgeld per tornooi.  Geef een
-            enkel getal voor een vast bedrag, of een woordenboek
-            ``{tornooinaam: bedrag}`` voor variabele bedragen.
+        inschrijvingsgeld (int | dict | None): Niet meer gebruikt bij
+            ``csv_dubbels=True``; bewaard voor het API-pad.
         file_dubbels (str, optional): Pad naar een Excel-bestand met handmatig
             ingegeven dubbels.  Standaard ``'Dubbels.xlsx'``.
         provincie (str, optional): Provinciefilter op basis van het eerste teken
             van de clubcode.  Standaard ``'A'`` (Antwerpen).
         dubbels_gebruiken (bool, optional): Indien ``True`` worden ook
-            dubbel/mixed-reeksen opgenomen.  Standaard ``False``.
+            dubbel/mixed-reeksen via de API opgenomen (enkel eerste speler per
+            koppel beschikbaar).  Standaard ``False``.
+        season (int, optional): VTTL-seizoensnummer (bv. ``26`` voor 2025-2026).
+            Standaard ``None`` (huidig seizoen).
+        csv_dubbels (bool, optional): Indien ``True`` worden dubbels en gemengd
+            automatisch gedownload via de VTTL competitiesite CSV-export.
+            Standaard ``False``.
 
     Returns:
         tuple[pandas.DataFrame, pandas.DataFrame]:
@@ -110,92 +303,112 @@ def GetTournamentEntries(tornooien, inschrijvingsgeld, file_dubbels='Dubbels.xls
               inschrijving (voor rapportage en totalen).
     """
     # client aanmaken
-    wsdl='http://api.vttl.be/0.7/?wsdl'
+    wsdl = 'http://api.vttl.be/0.7/?wsdl'
     client = zeep.Client(wsdl=wsdl)
 
-    # tornooien inladen
-    tournaments=client.service.GetTournaments(Season=season)
-    input_dict = helpers.serialize_object(tournaments)
+    # éénmalig inloggen op competitiesite als csv_dubbels gevraagd
+    comp_session = _vttl_competition_login() if csv_dubbels else None
 
+    # tornooien inladen
+    tournaments = client.service.GetTournaments(Season=season)
+    input_dict = helpers.serialize_object(tournaments)
 
     # find tournaments and players
     print('Lees tornooien')
-    dfs=[]
+    dfs = []
     for item in input_dict['TournamentEntries']:
         if item['Name'] in tornooien:
-            print(item['Name'],' ',item['UniqueIndex'])
-            spelers_tornooi=client.service.GetTournaments(Season=season,WithRegistrations=True,TournamentUniqueIndex=item['UniqueIndex'])
-            spelers_tornooi = helpers.serialize_object(spelers_tornooi)
-            spelers=spelers_tornooi['TournamentEntries'][0]['SerieEntries']
-            
-            # loop over all series
-            for serie in spelers:   
-                # gratis in A-reeks dames en heren
-                if not ((serie['Name']== 'Dames A')or(serie['Name']=='Heren A')):
-                    # methode werkt momenteel niet voor dubbels
-                
-                    if (not any(sub in serie['Name'].lower() for sub in ['dubbel', 'doubles', 'mixed', 'mixte','Menu','menu']) or dubbels_gebruiken):
-                        print('\t opgenomen reeks:',serie['Name'])    
-                        nummers=[w['Member']['UniqueIndex'] for w in serie['RegistrationEntries']]
-                        nummers=pd.DataFrame(nummers,columns=['Lidnummer'])
-                        nummers['Tornooi']=item['Name'] if item['Name'] != 'BK A eindtabellen - CB A tableaux final' else 'BK A - CB A'
-                        nummers['reeks']=item['Name']+' '+serie['Name']
-                        nummers['Naam']=[w['Member']['LastName'] for w in serie['RegistrationEntries']]
-                        nummers['Voornaam']=[w['Member']['FirstName'] for w in serie['RegistrationEntries']]
-                        nummers['Club']=[w['Club']['UniqueIndex'] for w in serie['RegistrationEntries']]
-                        
+            # BK A eindtabellen krijgt een kortere weergavenaam
+            tornooi_label = ('BK A - CB A' if item['Name'] == 'BK A eindtabellen - CB A tableaux final'
+                             else item['Name'])
+            print(item['Name'], ' ', item['UniqueIndex'])
 
-                        # inschrijvingsgeld per tornooi
+            if csv_dubbels:
+                # ── CSV-pad: enkels + dubbels + gemengd, prijs uit de CSV ──
+                csv_df = _get_entries_from_csv(
+                    comp_session, item['UniqueIndex'], tornooi_label, provincie)
+                if not csv_df.empty:
+                    dfs.append(csv_df)
+            else:
+                # ── API-pad (bewaard voor als de API ooit volledig werkt) ──
+                spelers_tornooi = client.service.GetTournaments(
+                    Season=season, WithRegistrations=True,
+                    TournamentUniqueIndex=item['UniqueIndex'])
+                spelers_tornooi = helpers.serialize_object(spelers_tornooi)
+                spelers = spelers_tornooi['TournamentEntries'][0]['SerieEntries']
+
+                for serie in spelers:
+                    # gratis in A-reeks dames en heren
+                    if (serie['Name'] == 'Dames A') or (serie['Name'] == 'Heren A'):
+                        continue
+
+                    is_dubbel = any(sub in serie['Name'].lower()
+                                    for sub in ['dubbel', 'doubles', 'mixed', 'mixte', 'menu'])
+
+                    if not is_dubbel or dubbels_gebruiken:
+                        print('\t opgenomen reeks:', serie['Name'])
+                        nummers = [w['Member']['UniqueIndex'] for w in serie['RegistrationEntries']]
+                        nummers = pd.DataFrame(nummers, columns=['Lidnummer'])
+                        nummers['Tornooi']   = tornooi_label
+                        nummers['reeks']     = item['Name'] + ' ' + serie['Name']
+                        nummers['Naam']      = [w['Member']['LastName']  for w in serie['RegistrationEntries']]
+                        nummers['Voornaam']  = [w['Member']['FirstName'] for w in serie['RegistrationEntries']]
+                        nummers['Club']      = [w['Club']['UniqueIndex'] for w in serie['RegistrationEntries']]
+
                         if isinstance(inschrijvingsgeld, int):
-                            nummers['Inschrijvingsgeld']=inschrijvingsgeld
+                            nummers['Inschrijvingsgeld'] = inschrijvingsgeld
                         else:
-                            nummers['Inschrijvingsgeld']=inschrijvingsgeld[item['Name']]
+                            nummers['Inschrijvingsgeld'] = inschrijvingsgeld[item['Name']]
 
                         dfs.append(nummers)
                     else:
-                        print('\t Niet opgenomen reeks:',serie['Name'])
+                        print('\t Niet opgenomen reeks:', serie['Name'])
 
-
-    #combine all
-    all_registrations=pd.concat(dfs)
+    # combine all
+    all_registrations = pd.concat(dfs, ignore_index=True)
 
     # only one participation in the same tournament
-    all_registrations=all_registrations.drop_duplicates(['Lidnummer','Naam','Voornaam','Club','Tornooi'])
+    all_registrations = all_registrations.drop_duplicates(
+        ['Lidnummer', 'Naam', 'Voornaam', 'Club', 'Tornooi'])
 
-    # select province
-    all_registrations=all_registrations[[w[0]=='A' for w in all_registrations.Club]]
-    all_registrations=all_registrations[all_registrations['Club']!='AFTT']
+    # select province (alleen voor enkels nodig; CSV-dubbels zijn al gefilterd)
+    all_registrations = all_registrations[
+        [w[0] == provincie for w in all_registrations.Club]]
+    all_registrations = all_registrations[all_registrations['Club'] != 'AFTT']
 
-    # add dubbels
-    # if dubbesl exists, add them
-    if os.path.exists(file_dubbels):
-        tmp=pd.read_excel(file_dubbels)
-        all_registrations=pd.concat([all_registrations,tmp])
+    # handmatig Excel-bestand met dubbels (achterwaartse compatibiliteit)
+    if file_dubbels and os.path.exists(file_dubbels):
+        tmp = pd.read_excel(file_dubbels)
+        all_registrations = pd.concat([all_registrations, tmp], ignore_index=True)
 
     # all Name and Voornaam to capital letter for first letter of each word
-    all_registrations['Naam'] = all_registrations['Naam'].str.title()
+    all_registrations['Naam']     = all_registrations['Naam'].str.title()
     all_registrations['Voornaam'] = all_registrations['Voornaam'].str.title()
 
-
     # remove leading and trailing spaces
-    all_registrations['Naam']=all_registrations['Naam'].str.strip()
-    all_registrations['Voornaam']=all_registrations['Voornaam'].str.strip()
+    all_registrations['Naam']     = all_registrations['Naam'].str.strip()
+    all_registrations['Voornaam'] = all_registrations['Voornaam'].str.strip()
 
     # add price in name of tournament
-    all_registrations['Tornooi']=all_registrations['Tornooi']+' (EUR '+all_registrations['Inschrijvingsgeld'].astype(str)+')'
+    all_registrations['Tornooi'] = (all_registrations['Tornooi'] + ' (EUR '
+                                    + all_registrations['Inschrijvingsgeld'].astype(str) + ')')
 
     # convert to simple list
-    combi_amount=all_registrations.groupby(['Lidnummer','Naam','Voornaam','Club'])[['Inschrijvingsgeld']].sum()
-    combi_list_tournaments=all_registrations.groupby(['Lidnummer','Naam','Voornaam','Club'])['Tornooi'].apply(list).apply(lambda p:','.join(p))
-    final=combi_amount.merge(combi_list_tournaments,left_index=True,right_index=True).reset_index()
+    combi_amount = all_registrations.groupby(
+        ['Lidnummer', 'Naam', 'Voornaam', 'Club'])[['Inschrijvingsgeld']].sum()
+    combi_list_tournaments = (all_registrations
+                              .groupby(['Lidnummer', 'Naam', 'Voornaam', 'Club'])['Tornooi']
+                              .apply(list).apply(lambda p: ','.join(p)))
+    final = combi_amount.merge(combi_list_tournaments,
+                               left_index=True, right_index=True).reset_index()
 
     # check on duplicated lidnummer
-    if final['Lidnummer'].duplicated().sum()>0:
+    if final['Lidnummer'].duplicated().sum() > 0:
         print('Duplicated lidnummer, stopping')
         print(final[final['Lidnummer'].duplicated()])
         sys.exit()
-    
-    return final,all_registrations
+
+    return final, all_registrations
 
 def AddFines(final, file_boetes, tag_lidnummer='Lidnummer', tag_supplement='Supplement'):
     """Voeg boetes (niet-deelname) toe aan de inschrijvingslijst.
