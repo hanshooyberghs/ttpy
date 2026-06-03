@@ -41,6 +41,7 @@ def run():
     season       = config.get('season')
     provincie    = config.get('provincie', 'A')
     send_mails   = config.get('send_mails', False)
+    mail_test    = config.get('mail_test', False)
 
     file_boetes         = config['file_boetes']
     lege_factuur        = config['lege_factuur']
@@ -77,7 +78,7 @@ def run():
         formaat_factuur=formaat_factuur,
         functies=['secretaris', 'penningmeester'],
         send_mails=send_mails,
-        mail_test=False)
+        mail_test=mail_test)
 
 
 if __name__ == '__main__':
