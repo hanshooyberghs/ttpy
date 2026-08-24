@@ -73,9 +73,22 @@ def _trigger_report(vttl_pwd: str) -> datetime.datetime:
     """
     s = requests.Session()
     s.headers["User-Agent"] = "Mozilla/5.0"
+    s.auth = ("vt", "tl")  # site-wide basic auth added by VTTL
 
     r1 = s.get(f"{VTTL_BASE_URL}/login.jspa?dispatch=view")
-    jsid = re.search(r"jsessionid=([A-F0-9]+)", r1.text).group(1)
+    # Try to find jsessionid in the response body first, then fall back to
+    # cookies (JSESSIONID) or the final URL after any redirects.
+    m = re.search(r"jsessionid=([A-F0-9]+)", r1.text, re.IGNORECASE)
+    if m:
+        jsid = m.group(1)
+    elif "JSESSIONID" in s.cookies:
+        jsid = s.cookies["JSESSIONID"]
+    else:
+        url_m = re.search(r"jsessionid=([A-F0-9]+)", r1.url, re.IGNORECASE)
+        if url_m:
+            jsid = url_m.group(1)
+        else:
+            sys.exit("✗ Kon jsessionid niet vinden – controleer bereikbaarheid van leden.vttl.be.")
 
     r2 = s.post(
         f"{VTTL_BASE_URL}/loginSave.jspa;jsessionid={jsid}",
