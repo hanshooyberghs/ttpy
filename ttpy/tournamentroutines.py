@@ -5,6 +5,7 @@ Routines voor het ophalen, verwerken en doorsturen van tornooi-inschrijvingen
 via de VTTL SOAP-API (zeep).
 
 Functies:
+    GetTournamentSeriesEntries() – Haal volledige inschrijvingen per reeks op.
     GetTournamentEntries()    – Haal inschrijvingen op voor een lijst tornooien.
     AddFines()                – Voeg boetes (niet-deelname) toe aan de inschrijvingslijst.
     PrintTotals()             – Druk totalen af en sla detail op als Excel.
@@ -96,70 +97,37 @@ def _vttl_competition_login():
     return s
 
 
-def _get_entries_from_csv(session, t_id, tornooi_naam, provincie='A'):
-    """Download en parseer alle inschrijvingen (enkels + dubbels + gemengd) uit de VTTL CSV-export.
+def _parse_tournament_csv(csv_text, t_id, tornooi_naam, include_free=False,
+                          strict_structure=False):
+    """Parseer een VTTL-tornooi-export naar één rij per ingeschreven speler."""
+    columns = [
+        'Tornooi', 'Reeks', 'ReeksType', 'TeamId', 'Lidnummer',
+        'Inschrijvingsgeld',
+    ]
+    lines = csv_text.strip().splitlines()
 
-    Haalt de CSV op voor een specifiek tornooi via de VTTL competitiesite.
-    Prijs per reeks, reekstype en deelnemers worden rechtstreeks uit de CSV gelezen.
-    Naam en clubcode worden opgezocht via ``getExport()``.
-
-    Enkels krijgen ``tornooi_naam`` als Tornooi-label, dubbels krijgen
-    ``"{tornooi_naam} Dubbel"`` en gemengd ``"{tornooi_naam} Dubbel Gemengd"``.
-    Reeksen met prijs 0 die expliciet gratis zijn (bv. Dames A / Heren A bij VK)
-    worden overgeslagen; overige reeksen met prijs 0 resulteren in een fout.
-
-    Args:
-        session (requests.Session): Ingelogde sessie voor competitie.vttl.be.
-        t_id (int | str): Uniek tornooi-ID (``UniqueIndex`` uit de VTTL API).
-        tornooi_naam (str): Naam van het tornooi (voor de Tornooi-kolom).
-        provincie (str, optional): Eerste letter van de clubcode als filter.
-            Standaard ``'A'`` (Antwerpen).
-
-    Returns:
-        pandas.DataFrame: DataFrame met kolommen ``Lidnummer``, ``Naam``,
-        ``Voornaam``, ``Club``, ``Tornooi``, ``reeks``, ``Inschrijvingsgeld``.
-        Leeg DataFrame als het downloaden mislukt.
-    """
-    url = f'{COMPETITIE_BASE}/index.php?menu=7&export=3&format=csv&t_id={t_id}'
-    r = session.get(url)
-
-    if 'text/html' in r.headers.get('Content-Type', ''):
-        print(f'\t⚠ Geen toegang tot CSV voor tornooi {t_id} – overgeslagen.')
-        return pd.DataFrame()
-
-    lines = r.text.strip().split('\n')
-
-    # Lees serie-info uit R-regels; sla reeksen met prijs 0 over (bv. gratis A-reeksen)
-    # maar bewaar enkels zonder prijs (prijs wordt later ingevuld via inschrijvingsgeld)
     series = {}
     for line in lines:
         if not line.startswith('R;'):
             continue
         row = next(csv.reader(io.StringIO(line), delimiter=';'))
-        sid, sname = row[1], row[2]
+        sid, sname = row[1], row[2].strip()
         try:
             price = int(row[4])
         except (IndexError, ValueError):
             price = 0
-        stype = next((f for f in row if f in ('single', 'double', 'mixed')), None)
+        stype = next((field for field in row
+                      if field in ('single', 'double', 'mixed')), None)
         if stype is None:
-            print(f'\t  (reeks genegeerd - geen type single/double/mixed: {sname})')
             continue
-        # reeksen met prijs 0 zijn gratis en worden overgeslagen
-        if price == 0:
-            print(f'\t  (reeks genegeerd - gratis: {sname})')
-            continue
-        # menu-reeksen worden genegeerd
         if 'menu' in sname.lower():
-            print(f'\t  (reeks genegeerd - menu: {sname})')
             continue
-        print(f'\t  {stype:6s}  EUR {price:2d}  {sname}')
+        if price == 0 and not include_free:
+            continue
         series[sid] = {'name': sname, 'type': stype, 'price': price}
 
-    # Lees lidnummers uit I-regels voor alle opgenomen reeksen.
-    # Enkels:        I;serie_id;lidnummer
-    # Dubbels/gemengd: I;serie_id;speler1;speler2
-    members_by_series = {}
+    rows = []
+    registration_number = {}
     for line in lines:
         if not line.startswith('I;'):
             continue
@@ -167,44 +135,200 @@ def _get_entries_from_csv(session, t_id, tornooi_naam, provincie='A'):
         sid = parts[1]
         if sid not in series:
             continue
-        mids = [p for p in parts[2:] if p.strip().isdigit()]
-        members_by_series.setdefault(sid, []).extend(int(m) for m in mids)
-
-    if not members_by_series:
-        return pd.DataFrame()
-
-    # Lookup naam en club via bestaande ledenexport
-    export, _ = mailroutines.getExport()
-    lookup = (export[['Lidnummer', 'Naam', 'Voornaam', 'Club (0)']]
-              .rename(columns={'Club (0)': 'Club'}))
-
-    rows = []
-    for sid, member_ids in members_by_series.items():
+        member_ids = [int(value) for value in parts[2:]
+                      if value.strip().isdigit()]
         info = series[sid]
-        if info['type'] == 'mixed':
-            tornooi_label = f'{tornooi_naam} Dubbel Gemengd'
-        elif info['type'] == 'double':
-            tornooi_label = f'{tornooi_naam} Dubbel'
-        else:
-            tornooi_label = tornooi_naam
-        for mid in member_ids:
+        if (strict_structure and info['type'] in ('double', 'mixed')
+                and len(member_ids) != 2):
+            raise ValueError(
+                f'Onvolledig dubbelpaar in {tornooi_naam}, reeks '
+                f'{info["name"]}: {member_ids}')
+        if strict_structure and info['type'] == 'single' and len(member_ids) != 1:
+            raise ValueError(
+                f'Ongeldige enkelinschrijving in {tornooi_naam}, reeks '
+                f'{info["name"]}: {member_ids}')
+
+        registration_number[sid] = registration_number.get(sid, 0) + 1
+        team_id = f'{t_id}:{sid}:{registration_number[sid]}'
+        for member_id in member_ids:
             rows.append({
-                'Lidnummer':         mid,
-                'Tornooi':           tornooi_label,
-                'reeks':             f'{tornooi_naam} {info["name"]}',
+                'Tornooi': tornooi_naam,
+                'Reeks': info['name'],
+                'ReeksType': info['type'],
+                'TeamId': team_id,
+                'Lidnummer': member_id,
                 'Inschrijvingsgeld': info['price'],
             })
 
-    df = pd.DataFrame(rows)
-    df = df.merge(lookup, on='Lidnummer', how='left')
+    return pd.DataFrame(rows, columns=columns)
 
-    # Filter op provincie en verwijder onbekende clubs
-    df = df[df['Club'].fillna('').str[:1] == provincie]
-    df = df[df['Club'] != 'AFTT']
 
-    # Titel-case namen
-    df['Naam']     = df['Naam'].str.title().str.strip()
-    df['Voornaam'] = df['Voornaam'].str.title().str.strip()
+def _add_member_details(entries, provincie='A', strict_members=False,
+                        fallback_members=None):
+    """Verrijk ruwe tornooi-inschrijvingen met naam en club."""
+    if entries.empty:
+        return entries.assign(
+            Naam=pd.Series(dtype='object'),
+            Voornaam=pd.Series(dtype='object'),
+            Club=pd.Series(dtype='object'),
+            ClubNaam=pd.Series(dtype='object'),
+        )
+
+    export, _ = mailroutines.getExport()
+    lookup_columns = ['Lidnummer', 'Naam', 'Voornaam', 'Club (0)']
+    if 'NaamClub' in export.columns:
+        lookup_columns.append('NaamClub')
+    lookup = export[lookup_columns].drop_duplicates('Lidnummer').rename(
+        columns={'Club (0)': 'Club', 'NaamClub': 'ClubNaam'})
+    if fallback_members is not None and not fallback_members.empty:
+        lookup = pd.concat(
+            [lookup, fallback_members], ignore_index=True
+        ).drop_duplicates('Lidnummer', keep='first')
+    entries = entries.merge(lookup, on='Lidnummer', how='left')
+
+    unknown = entries[entries['Club'].isna()]['Lidnummer'].drop_duplicates()
+    if not unknown.empty:
+        if strict_members:
+            raise ValueError(
+                'Lidnummers niet gevonden in de ledenexport: '
+                + ', '.join(str(value) for value in unknown.tolist()))
+        print(
+            '\t⚠ Lidnummers zonder club in de ledenexport worden uitgesloten: '
+            + ', '.join(str(value) for value in unknown.tolist()))
+
+    if provincie:
+        entries = entries[
+            entries['Club'].fillna('').str.startswith(provincie)]
+    entries = entries[entries['Club'] != 'AFTT'].copy()
+    entries['Naam'] = entries['Naam'].str.title().str.strip()
+    entries['Voornaam'] = entries['Voornaam'].str.title().str.strip()
+    if 'ClubNaam' not in entries.columns:
+        entries['ClubNaam'] = entries['Club']
+    else:
+        entries['ClubNaam'] = entries['ClubNaam'].fillna(entries['Club'])
+    return entries
+
+
+def _download_tournament_entries(session, t_id, tornooi_naam, provincie='A',
+                                 include_free=False, strict_members=False,
+                                 fallback_members=None,
+                                 strict_structure=False):
+    """Download, parseer en verrijk één tornooi-export."""
+    url = f'{COMPETITIE_BASE}/index.php?menu=7&export=3&format=csv&t_id={t_id}'
+    r = session.get(url)
+
+    if 'text/html' in r.headers.get('Content-Type', ''):
+        raise RuntimeError(
+            f'Geen toegang tot CSV voor tornooi {tornooi_naam} ({t_id}).')
+    r.raise_for_status()
+
+    entries = _parse_tournament_csv(
+        r.text, t_id, tornooi_naam, include_free=include_free,
+        strict_structure=strict_structure)
+    return _add_member_details(
+        entries, provincie=provincie, strict_members=strict_members,
+        fallback_members=fallback_members)
+
+
+def _get_api_member_lookup(client, season, tournament_id):
+    """Lees naam en club uit de SOAP-inschrijvingen als exportfallback."""
+    tournament = helpers.serialize_object(client.service.GetTournaments(
+        Season=season,
+        WithRegistrations=True,
+        TournamentUniqueIndex=tournament_id,
+    ))
+    rows = []
+    for item in tournament.get('TournamentEntries') or []:
+        for series in item.get('SerieEntries') or []:
+            for entry in series.get('RegistrationEntries') or []:
+                member = entry.get('Member') or {}
+                club = entry.get('Club') or {}
+                if member.get('UniqueIndex') is None:
+                    continue
+                rows.append({
+                    'Lidnummer': member['UniqueIndex'],
+                    'Naam': member.get('LastName'),
+                    'Voornaam': member.get('FirstName'),
+                    'Club': club.get('UniqueIndex'),
+                    'ClubNaam': club.get('Name'),
+                })
+    return pd.DataFrame(
+        rows,
+        columns=['Lidnummer', 'Naam', 'Voornaam', 'Club', 'ClubNaam'],
+    ).drop_duplicates('Lidnummer')
+
+
+def GetTournamentSeriesEntries(tornooien, season=None, provincie='A'):
+    """Haal volledige inschrijvingen per reeks op, inclusief dubbelteams.
+
+    Anders dan :func:`GetTournamentEntries` wordt niet per speler/tornooi
+    gededupliceerd en worden gratis reeksen niet verwijderd. De uitvoer is
+    daardoor geschikt voor deelnemersaantallen en klassementen.
+    """
+    client = zeep.Client(wsdl=WSDL)
+    session = _vttl_competition_login()
+    tournaments = helpers.serialize_object(
+        client.service.GetTournaments(Season=season))
+    available = {
+        item['Name']: item
+        for item in tournaments['TournamentEntries']
+    }
+    missing = [name for name in tornooien if name not in available]
+    if missing:
+        raise ValueError(
+            'Tornooien niet gevonden voor seizoen '
+            f'{season}: {", ".join(missing)}')
+
+    frames = []
+    for tournament_name in tornooien:
+        item = available[tournament_name]
+        print(tournament_name, ' ', item['UniqueIndex'])
+        fallback_members = _get_api_member_lookup(
+            client, season, item['UniqueIndex'])
+        frames.append(_download_tournament_entries(
+            session,
+            item['UniqueIndex'],
+            tournament_name,
+            provincie=provincie,
+            include_free=True,
+            strict_members=True,
+            fallback_members=fallback_members,
+            strict_structure=True,
+        ))
+
+    columns = [
+        'Tornooi', 'Reeks', 'ReeksType', 'TeamId', 'Lidnummer',
+        'Inschrijvingsgeld', 'Naam', 'Voornaam', 'Club', 'ClubNaam',
+    ]
+    if not frames:
+        return pd.DataFrame(columns=columns)
+    return pd.concat(frames, ignore_index=True)[columns]
+
+
+def _get_entries_from_csv(session, t_id, tornooi_naam, provincie='A'):
+    """Download tornooi-inschrijvingen in het bestaande afrekeningsformaat."""
+    try:
+        df = _download_tournament_entries(
+            session, t_id, tornooi_naam, provincie=provincie,
+            include_free=False, strict_members=False)
+    except (RuntimeError, requests.HTTPError):
+        print(f'\t⚠ Geen toegang tot CSV voor tornooi {t_id} – overgeslagen.')
+        return pd.DataFrame()
+
+    if df.empty:
+        return pd.DataFrame()
+
+    df['Tornooi'] = df.apply(
+        lambda row: (
+            f'{tornooi_naam} Dubbel Gemengd'
+            if row['ReeksType'] == 'mixed'
+            else f'{tornooi_naam} Dubbel'
+            if row['ReeksType'] == 'double'
+            else tornooi_naam
+        ),
+        axis=1,
+    )
+    df['reeks'] = tornooi_naam + ' ' + df['Reeks']
 
     n_enkels  = (df['Tornooi'] == tornooi_naam).sum()
     n_dubbels = (df['Tornooi'] != tornooi_naam).sum()
@@ -219,6 +343,7 @@ def _create_client():
         tuple[zeep.Client, dict]: De SOAP-client en een geserialiseerd
         woordenboek met alle tornooigegevens.
     """
+    client = zeep.Client(wsdl=WSDL)
     tournaments = client.service.GetTournaments()
     input_dict = helpers.serialize_object(tournaments)
     return client, input_dict
@@ -230,6 +355,7 @@ def _get_credentials():
     Returns:
         tuple[str, str]: Account en wachtwoord voor de VTTL API.
     """
+    account = os.getenv('ACCOUNT_TT') or input("Environmental variable ACCOUNT_TT not set. Please enter manually: ")
     paswoord = os.getenv('PASWOORD_TT') or input("Environmental variable PASWOORD_TT not set. Please enter manually: ")
     return account, paswoord
 

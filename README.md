@@ -148,11 +148,15 @@ ttpy_mails_tornooi
 
 ### `ttpy_check`
 
-Voert alle ledencontroles uit en print de resultaten naar de console.
+Voert alle ledencontroles uit en print de resultaten naar de console. Daarna
+worden de e-mailadressen per clubfunctie en als gecombineerde nieuwsbrieflijst
+afgedrukt.
 
 - **Statuten** — leden zonder statuut, jeugdspelers met verkeerd statuut, recreanten met te hoog klassement
 - **Geboortedatum** — leden met een geboortedatum die te recent lijkt
 - **Dames op herensterktelijst** — clubs met meer dan 8 dames op de herenlijst
+- **Mailinglijsten** — voorzitters, secretarissen, penningmeesters,
+  interclubleiders, jeugdverantwoordelijken en alle functies gecombineerd
 
 **Geen configuratiebestand nodig.**
 
