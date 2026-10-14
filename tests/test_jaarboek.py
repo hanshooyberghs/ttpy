@@ -66,6 +66,32 @@ class YearbookTests(unittest.TestCase):
         self.assertFalse(self.update())
         self.assertEqual(self.merge.call_count, 1)
 
+    def test_public_club_pdf_is_created_updated_and_repaired(self):
+        self.config = replace(self.config, jaarboek_pdf=self.base / 'public' / 'book.pdf')
+        public_clubs = self.config.jaarboek_pdf.parent / self.config.club_pdf.name
+        self.update()
+        self.assertEqual(public_clubs.read_bytes(), self.config.club_pdf.read_bytes())
+        public_clubs.write_bytes(b'outdated')
+        self.assertFalse(self.update())
+        self.assertEqual(public_clubs.read_bytes(), self.config.club_pdf.read_bytes())
+        public_clubs.unlink()
+        self.assertFalse(self.update())
+        self.assertTrue(public_clubs.is_file())
+        self.assertEqual(self.merge.call_count, 1)
+        jaarboek.create_pdf.side_effect = lambda clubs, season, output: output.write_bytes(b'new clubs')
+        self.people[0]['Email'] = 'changed@example.test'
+        self.write_exports()
+        self.assertTrue(self.update())
+        self.assertEqual(public_clubs.read_bytes(), b'new clubs')
+
+    def test_public_copy_refuses_to_overwrite_input(self):
+        source = self.base / 'source' / 'fixed.pdf'
+        source.parent.mkdir()
+        source.write_bytes(b'clubs')
+        with self.assertRaisesRegex(ValueError, 'overschrijven'):
+            jaarboek.publish_club_pdf(source, self.base / 'book.pdf',
+                                     protected=(self.base / 'fixed.pdf',))
+
     def test_output_has_heading_and_whitespace_before_status(self):
         heading = '\n--------------------\nJaarboek publiceren\n--------------------\n\n'
         for expected in ('Jaarboek: bestuurs-/clubgegevens gewijzigd',

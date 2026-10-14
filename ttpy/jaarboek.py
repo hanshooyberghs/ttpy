@@ -415,6 +415,23 @@ def source_details(path):
     return {"bestand": str(path.resolve()), "gewijzigd": datetime.fromtimestamp(path.stat().st_mtime).astimezone().isoformat(), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
 
 
+def publish_club_pdf(club_pdf, yearbook_pdf, *, protected=()):
+    """Bewaar ook een actuele club-PDF naast het volledige jaarboek."""
+    output = yearbook_pdf.parent / club_pdf.name
+    if output.resolve() == club_pdf.resolve():
+        return
+    if output.resolve() in {path.resolve() for path in (yearbook_pdf, *protected)}:
+        raise ValueError("De publieke club-PDF mag geen invoer of jaarboek overschrijven.")
+    if output.is_file() and output.read_bytes() == club_pdf.read_bytes():
+        return
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".clubbesturen-publicatie-", dir=output.parent) as directory:
+        temporary = Path(directory) / output.name
+        shutil.copyfile(club_pdf, temporary)
+        temporary.replace(output)
+    print(f"Publieke club-PDF: {output}")
+
+
 def publication_manifest(clubs, person_count, season, person_path, club_path):
     return {
         "gemaakt": datetime.now().astimezone().isoformat(),
@@ -476,6 +493,11 @@ def main(base=None):
         print(f"Samengevoegd jaarboek: {args.jaarboek_pdf}")
     if not args.vaste_pdf:
         manifest["alleen_clubpagina"] = True
+    publish_club_pdf(
+        args.club_pdf, args.jaarboek_pdf,
+        protected=(args.bron, args.vaste_docx, person_path, club_path,
+                   args.vaste_pdf or args.vaste_docx.with_suffix(".pdf")),
+    )
     args.club_pdf.with_suffix(".json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
@@ -524,6 +546,9 @@ def load_config(path):
         raise ValueError("club_pdf en jaarboek_pdf moeten PDF-paden zijn.")
     if len(set(outputs)) != len(outputs) or set(outputs) & set(inputs):
         raise ValueError("Jaarboekuitvoer mag geen invoer of andere uitvoer overschrijven.")
+    public_clubs = config.jaarboek_pdf.parent / config.club_pdf.name
+    if public_clubs != config.club_pdf and public_clubs in {*inputs, *outputs}:
+        raise ValueError("De publieke club-PDF mag geen invoer of andere uitvoer overschrijven.")
     return config
 
 
@@ -535,6 +560,11 @@ def update_yearbook(config, *, force=False):
         raise ValueError("Stel EXPORT_TT of [jaarboek].export in.")
     person_path = export / "exportPerson.csv" if export.is_dir() else export
     club_path = person_path.with_name("exportClub.csv")
+    copy_protected = (
+        person_path, club_path, config.vaste_docx,
+        config.vaste_pdf or config.vaste_docx.with_suffix(".pdf"),
+        config.club_pdf.with_suffix(".json"),
+    )
     protected = {person_path.resolve(), club_path.resolve()}
     if any(path.resolve() in protected for path in (
         config.club_pdf, config.club_pdf.with_suffix(".json"), config.jaarboek_pdf,
@@ -560,6 +590,7 @@ def update_yearbook(config, *, force=False):
             and previous["clubgegevens"] == manifest["clubgegevens"]
             and previous.get("seizoen") == season
             and config.club_pdf.is_file() and config.jaarboek_pdf.is_file()):
+        publish_club_pdf(config.club_pdf, config.jaarboek_pdf, protected=copy_protected)
         print("Jaarboek: geen wijzigingen in gepubliceerde bestuurs- of clubgegevens.")
         return False
     print("Jaarboek: bestuurs-/clubgegevens gewijzigd, publicatie ontbreekt of handmatige generatie gevraagd.")
@@ -571,6 +602,7 @@ def update_yearbook(config, *, force=False):
         create_pdf(clubs, season, staged_clubs)
         merge_pdf(static_pdf, staged_clubs, config.jaarboek_pdf)
         shutil.copyfile(staged_clubs, config.club_pdf)
+    publish_club_pdf(config.club_pdf, config.jaarboek_pdf, protected=copy_protected)
     temporary = manifest_path.with_suffix(".tmp.json")
     temporary.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     temporary.replace(manifest_path)

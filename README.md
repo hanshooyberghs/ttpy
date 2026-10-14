@@ -251,6 +251,10 @@ jaarboek_pdf = "../Administratie/DocumentenPubliek/Jaarboek_PCA.pdf"
 ```
 
 Alle relatieve paden zijn **relatief aan het configuratiebestand**.
+De club-PDF wordt ook naast `jaarboek_pdf` gepubliceerd, dus met deze config
+in `Administratie/DocumentenPubliek`. Een ontbrekende of verouderde kopie
+wordt ook zonder gewijzigde bestuursgegevens hersteld. Dit geldt eveneens
+voor de compatibele ingang `maak_jaarboek.py`.
 Houd config en documenten buiten de package-installatie; een kopieerbare
 template staat in `configs/check.toml`. Credentials blijven uitsluitend in de
 omgeving. `EXPORT_TT` blijft de exportbron; een optionele `export`-override
