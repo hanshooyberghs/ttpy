@@ -215,11 +215,65 @@ afgedrukt.
 - **Mailinglijsten** — voorzitters, secretarissen, penningmeesters,
   interclubleiders, jeugdverantwoordelijken en alle functies gecombineerd
 
-**Geen configuratiebestand nodig.**
+**Geen configuratiebestand nodig voor de bestaande controles.**
 
 ```bash
 ttpy_check
 ```
+
+Met een optionele `check.toml` wordt na download, controles en mailinglijsten
+ook het jaarboek vernieuwd wanneer gepubliceerde bestuurs- of clubgegevens
+veranderen. Vergelijking gebeurt met de JSON van de laatste succesvolle
+publicatie, niet met CSV-bestandshashes: wijzigingen aan gewone leden leiden
+niet tot een nieuwe PDF. Namen, functies, gepubliceerde contactgegevens,
+clubnamen, lokalen en actieve clubs tellen wel mee. Bij een eerste publicatie,
+een ontbrekende PDF of een gewijzigd seizoen wordt ook gegenereerd.
+Een mislukte publicatie verandert de vergelijkingsbasis niet, zodat een
+volgende uitvoering opnieuw probeert. Een ongeldig bronbestand geeft een fout.
+
+```bash
+ttpy_check --config "/pad/naar/TT Provincie/ttpy_configs/check.toml"
+```
+
+Configselectie: `--config`, daarna omgevingsvariabele `TTPY_CHECK_CONFIG`,
+daarna `check.toml` in de huidige map. Een expliciet opgegeven maar ontbrekend
+bestand geeft een fout; zonder config blijft de oude werking behouden.
+Gebruik voor uitvoering vanuit wisselende mappen bij voorkeur
+`TTPY_CHECK_CONFIG` met een absoluut pad in de ttpy-omgeving.
+
+```toml
+[jaarboek]
+vaste_docx = "../Administratie/Jaarboek/Jaarboek_PCA_zonder_clubbesturen.docx"
+club_pdf = "../Administratie/Jaarboek/Clubbesturen_Antwerpen.pdf"
+jaarboek_pdf = "../Administratie/DocumentenPubliek/Jaarboek_PCA.pdf"
+# seizoen = "2026-2027"  # anders uit de vaste DOCX
+# vaste_pdf = "../Administratie/Jaarboek/Jaarboek_PCA_zonder_clubbesturen.pdf"
+```
+
+Alle relatieve paden zijn **relatief aan het configuratiebestand**.
+Houd config en documenten buiten de package-installatie; een kopieerbare
+template staat in `configs/check.toml`. Credentials blijven uitsluitend in de
+omgeving. `EXPORT_TT` blijft de exportbron; een optionele `export`-override
+moet bij `ttpy_check` naar dezelfde persoons-export verwijzen.
+Zonder `vaste_pdf` wordt de DOCX met LibreOffice omgezet (Linux, Windows of
+Windows vanuit WSL). Met `vaste_pdf` moet je die PDF zelf actueel houden.
+De bewerkbare DOCX wordt nooit automatisch opnieuw aangemaakt of overschreven.
+Paginanummers uit de vaste PDF worden niet herberekend.
+
+### `ttpy_jaarboek`
+
+Forceert de volledige publicatie met dezelfde config, zonder download of
+ledencontroles. Gebruik dit na handmatige wijzigingen aan de vaste DOCX:
+`ttpy_check` vergelijkt de gepubliceerde clubgegevens, niet DOCX-wijzigingen.
+
+```bash
+ttpy_jaarboek --config "/pad/naar/TT Provincie/ttpy_configs/check.toml"
+```
+
+De oorspronkelijke `Administratie/Jaarboek/maak_jaarboek.py` blijft als
+compatibele ingang bestaan, met onder meer `--volledig` en `--maak-vaste-docx`.
+De PDF-generator gebruikt `pypdf` en `lxml`; alleen de DOCX-conversie vereist
+LibreOffice.
 
 ---
 
@@ -232,6 +286,7 @@ ttpy_check
 | `generalroutines` | Hulpfuncties voor Word- en Excel-bestanden |
 | `check_routines` | Kwaliteitscontroles op ledendata |
 | `vttl_download` | Automatisch downloaden van de VTTL ledenexport |
+| `jaarboek` | Club-PDF, DOCX-conversie, samenvoegen en wijzigingsdetectie |
 
 ---
 

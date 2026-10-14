@@ -5,7 +5,7 @@ setup(
     description='package to process VTTL table tennis data',
     version='1.1',
     packages=find_packages(),
-    install_requires=['pandas>=2.0','zeep','openpyxl','requests','python-docx','xlsxwriter'],
+    install_requires=['pandas>=2.0','zeep','openpyxl','requests','python-docx','xlsxwriter','pypdf','lxml'],
     entry_points={
         'console_scripts': [
             'ttpy_ledenlijst_aanpassing=ttpy.ledenlijst_aanpassing:run',
@@ -15,6 +15,7 @@ setup(
             'ttpy_inschrijving_tornooi=ttpy.inschrijving_tornooi:run',
             'ttpy_mails_tornooi=ttpy.mails_tornooi:run',
             'ttpy_check=ttpy.check:run',
+            'ttpy_jaarboek=ttpy.jaarboek:run',
             'ttpy_afrekening_tornooien=ttpy.afrekening_tornooien:run',
         ],
     },

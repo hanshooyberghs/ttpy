@@ -1,0 +1,14 @@
+# Paden zijn relatief aan dit bestand. Houd credentials in de omgeving.
+# Zonder [jaarboek] blijft ttpy_check beperkt tot controles en mailinglijsten.
+[jaarboek]
+vaste_docx = "../Administratie/Jaarboek/Jaarboek_PCA_zonder_clubbesturen.docx"
+club_pdf = "../Administratie/Jaarboek/Clubbesturen_Antwerpen.pdf"
+jaarboek_pdf = "../Administratie/DocumentenPubliek/Jaarboek_PCA.pdf"
+
+# EXPORT_TT blijft de standaard; eventueel een map of exportPerson.csv:
+# export = "../Ledenadministratie/Exports"
+# Seizoen wordt standaard uit de vaste DOCX gelezen:
+# seizoen = "2026-2027"
+# Alleen invullen als je zelf de vaste DOCX naar PDF exporteert.
+# Anders wordt LibreOffice automatisch gebruikt:
+# vaste_pdf = "../Administratie/Jaarboek/Jaarboek_PCA_zonder_clubbesturen.pdf"
