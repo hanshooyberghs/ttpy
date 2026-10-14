@@ -55,6 +55,35 @@ def _get_passwords():
     return vttl_pwd, mail_pwd
 
 
+def login_session(vttl_pwd: str) -> requests.Session:
+    """Maak uitsluitend een ingelogde sessie; geen rapport of mailverwerking."""
+    s = requests.Session()
+    s.headers["User-Agent"] = "Mozilla/5.0"
+    s.auth = ("vt", "tl")
+    try:
+        r1 = s.get(f"{VTTL_BASE_URL}/login.jspa?dispatch=view", timeout=30)
+        r1.raise_for_status()
+        m = re.search(r"jsessionid=([A-F0-9]+)", r1.text, re.IGNORECASE)
+        jsid = m.group(1) if m else s.cookies.get("JSESSIONID")
+        if not jsid:
+            m = re.search(r"jsessionid=([A-F0-9]+)", r1.url, re.IGNORECASE)
+            jsid = m.group(1) if m else None
+        if not jsid:
+            raise RuntimeError("Kon jsessionid niet vinden op leden.vttl.be.")
+        r2 = s.post(
+            f"{VTTL_BASE_URL}/loginSave.jspa;jsessionid={jsid}",
+            data={"userId": VTTL_LOGIN, "password": vttl_pwd,
+                  "logIn.x": "50", "logIn.y": "10"}, timeout=30,
+        )
+        r2.raise_for_status()
+        if "Uitloggen" not in r2.text:
+            raise RuntimeError("Login mislukt op leden.vttl.be; controleer PASWOORD_TT.")
+        return s
+    except (requests.RequestException, RuntimeError):
+        s.close()
+        raise RuntimeError("Login op leden.vttl.be mislukt; controleer toegang en PASWOORD_TT.") from None
+
+
 def _trigger_report(vttl_pwd: str) -> datetime.datetime:
     """Log in op leden.vttl.be en trigger het ledenlijst-rapport.
 
@@ -71,32 +100,10 @@ def _trigger_report(vttl_pwd: str) -> datetime.datetime:
     Raises:
         SystemExit: Als de login mislukt.
     """
-    s = requests.Session()
-    s.headers["User-Agent"] = "Mozilla/5.0"
-    s.auth = ("vt", "tl")  # site-wide basic auth added by VTTL
-
-    r1 = s.get(f"{VTTL_BASE_URL}/login.jspa?dispatch=view")
-    # Try to find jsessionid in the response body first, then fall back to
-    # cookies (JSESSIONID) or the final URL after any redirects.
-    m = re.search(r"jsessionid=([A-F0-9]+)", r1.text, re.IGNORECASE)
-    if m:
-        jsid = m.group(1)
-    elif "JSESSIONID" in s.cookies:
-        jsid = s.cookies["JSESSIONID"]
-    else:
-        url_m = re.search(r"jsessionid=([A-F0-9]+)", r1.url, re.IGNORECASE)
-        if url_m:
-            jsid = url_m.group(1)
-        else:
-            sys.exit("✗ Kon jsessionid niet vinden – controleer bereikbaarheid van leden.vttl.be.")
-
-    r2 = s.post(
-        f"{VTTL_BASE_URL}/loginSave.jspa;jsessionid={jsid}",
-        data={"userId": VTTL_LOGIN, "password": vttl_pwd,
-              "logIn.x": "50", "logIn.y": "10"},
-    )
-    if "Uitloggen" not in r2.text:
-        sys.exit("✗ Login mislukt op leden.vttl.be – controleer PASWOORD_TT.")
+    try:
+        s = login_session(vttl_pwd)
+    except RuntimeError as exc:
+        sys.exit(str(exc))
     print(f"✓ Ingelogd op leden.vttl.be als '{VTTL_LOGIN}'")
 
     triggered_at = datetime.datetime.now(datetime.timezone.utc)

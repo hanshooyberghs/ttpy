@@ -8,6 +8,7 @@ setup(
     install_requires=['pandas>=2.0','zeep','openpyxl','requests','python-docx','xlsxwriter'],
     entry_points={
         'console_scripts': [
+            'ttpy_ledenlijst_aanpassing=ttpy.ledenlijst_aanpassing:run',
             'ttpy_trigger_download=ttpy.vttl_download:run',
             'ttpy_mailing_naam=ttpy.mailing_naam:run',
             'ttpy_mailing_clubs=ttpy.mailing_clubs:run',
@@ -18,4 +19,3 @@ setup(
         ],
     },
 )
-

@@ -3,12 +3,14 @@ check_routines.py
 -----------------
 Kwaliteitscontroles op de VTTL-ledendata voor Provincie Antwerpen.
 
-Voert drie categorieën controles uit:
+Voert vier categorieën controles uit:
     - Statuten: leden zonder statuut, jeugdspelers met verkeerd statuut,
       recreanten met te hoog klassement, secretarissen/voorzitters zonder
       competitief-lid-statuut.
     - Geboortedatum: leden met een geboortedatum die te recent is.
     - Dames op herensterktelijst: clubs met meer dan 8 dames op de herenlijst.
+    - Clubfuncties: maximaal één voorzitter, secretaris en penningmeester
+      per club.
 
 Gebruik ``checkall()`` om alle controles in één keer uit te voeren.
 """
@@ -33,11 +35,47 @@ def checkall():
     """Voer alle beschikbare ledencontroles uit.
 
     Roept achtereenvolgens ``checkStatuten()``, ``checkGeboortedatum()`` en
-    ``checkDamesOpHeren()`` aan en drukt de resultaten af via stdout.
+    ``checkDamesOpHeren()`` en ``checkClubfuncties()`` aan en drukt de
+    resultaten af via stdout.
     """
     checkStatuten()
     checkGeboortedatum()
     checkDamesOpHeren()
+    checkClubfuncties()
+
+
+def checkClubfuncties():
+    """Rapporteer clubs met meerdere leden voor dezelfde bestuursfunctie.
+
+    Controleert alle clubfunctiekolommen. Een lid telt per club en functie
+    slechts eenmaal, ook als dezelfde functie herhaald voorkomt.
+    """
+    print('------------------')
+    print('Check clubfuncties')
+    print('------------------')
+
+    data = loadData()
+    functie_kolommen = [
+        kolom for kolom in data.columns
+        if kolom.lower().startswith('club fun')
+    ]
+    if not functie_kolommen:
+        raise ValueError('Geen clubfunctiekolommen gevonden in de ledenexport.')
+
+    functies = ('voorzitter', 'secretaris', 'penningmeester')
+    gevonden = False
+    for functie in functies:
+        selectie = data[
+            data[functie_kolommen].eq(functie).any(axis=1)
+        ].drop_duplicates(subset=['Club (0)', 'Lidnummer'])
+        for club, leden in selectie.groupby('Club (0)', sort=True):
+            if len(leden) <= 1:
+                continue
+            gevonden = True
+            print(f'\n=> Club {club}: {len(leden)} leden met functie {functie}')
+            print(leden[['Lidnummer', 'Naam', 'Voornaam', 'NaamClub']].to_string(index=False))
+    if not gevonden:
+        print('Geen clubs met meerdere voorzitters, secretarissen of penningmeesters.')
 
 
 

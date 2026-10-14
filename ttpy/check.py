@@ -3,7 +3,8 @@ ttpy_check
 ----------
 Voer alle ledencontroles uit op de VTTL-ledendata van Provincie Antwerpen.
 
-Controles: statuten, geboortedatums en dames op herensterktelijst.
+Controles: statuten, geboortedatums, dames op herensterktelijst en maximaal
+één voorzitter, secretaris en penningmeester per club.
 Na de controles worden de mailinglijsten per clubfunctie afgedrukt.
 Zie ``check_routines.py`` voor de details per controle.
 
