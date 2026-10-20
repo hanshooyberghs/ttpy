@@ -8,13 +8,9 @@ Config-formaat:
     tornooien = ["Tornooi A", "Tornooi B"]
     functies  = ["secretaris"]
 
-    # Vast inschrijvingsgeld voor alle tornooien:
-    inschrijvingsgeld = 5
-
-    # Of per tornooi:
-    # [inschrijvingsgeld]
-    # "Tornooi A" = 5
-    # "Tornooi B" = 8
+Inclusief beide dubbelspelers en gratis reeksen via de CSV-export.
+Vereist ACCOUNT_TT, PASWOORD_TT en EXPORT_TT.
+Toont onderaan spelers en paren die als enige in hun reeks zijn ingeschreven.
 """
 import argparse
 import tomllib
@@ -31,11 +27,31 @@ def _parse_list(value):
     return [v.strip() for v in value.split(',') if v.strip()]
 
 
+def _print_enige_inschrijvingen(resultaat):
+    """Druk per reeks de enige speler of het enige paar af."""
+    print("\nEnige inschrijvingen per reeks:")
+    # TeamId bevat tornooi, reeks en inschrijvingsnummer.
+    reeks_ids = resultaat['TeamId'].str.rsplit(':', n=1).str[0]
+    gevonden = False
+    for _, reeks in resultaat.groupby(reeks_ids, sort=False):
+        if reeks['TeamId'].nunique() != 1:
+            continue
+        spelers = reeks.drop_duplicates('Lidnummer')
+        namen = [
+            f"{speler.Naam} {speler.Voornaam}".strip()
+            for speler in spelers.itertuples()
+        ]
+        print(f"{' / '.join(namen)} ({reeks.iloc[0]['Reeks']})")
+        gevonden = True
+    if not gevonden:
+        print('Geen.')
+
+
 def run():
     """Lees de config, haal tornooi-inschrijvingen op en druk de mailinglijst af.
 
     Laadt het TOML-configuratiebestand (standaard ``mails_tornooi.toml``),
-    haalt de registraties op via ``GetTournamentEntries()`` en drukt een
+    haalt de registraties op via ``GetTournamentSeriesEntries()`` en drukt een
     kommagescheiden mailinglijst af op basis van de ingeschreven spelers.
 
     Command-line argumenten:
@@ -52,10 +68,17 @@ def run():
 
     tornooien = _parse_list(config['tornooien'])
     functies = _parse_list(config.get('functies', ['secretaris']))
-    inschrijvingsgeld = config.get('inschrijvingsgeld', 0)
 
-    resultaat, _ = tr.GetTournamentEntries(tornooien, inschrijvingsgeld, provincie='A')
-    mr.GetMailinglijst_Lidnummer(resultaat[['Lidnummer']], functies=functies)
+    # Tel alle inschrijvingen; het provinciefilter geldt enkel voor de mailing.
+    resultaat = tr.GetTournamentSeriesEntries(tornooien, provincie=None)
+    antwerpen = resultaat[resultaat['Club'].fillna('').str.startswith('A')]
+    lidnummers = antwerpen[['Lidnummer']].drop_duplicates()
+    if lidnummers.empty:
+        print('Geen ingeschreven spelers gevonden voor deze tornooien in provincie A.')
+    else:
+        mr.GetMailinglijst_Lidnummer(lidnummers, functies=functies)
+
+    _print_enige_inschrijvingen(resultaat)
 
 
 if __name__ == '__main__':
